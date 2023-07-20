@@ -1,5 +1,13 @@
 use anyhow::Result;
 
+#[derive(serde::Deserialize, Debug)]
+#[allow(dead_code)]
+struct TestStruct {
+    what: String,
+    whats: String,
+    age: u8,
+}
+
 fn main() -> Result<()> {
     let platform = v8::new_default_platform(0, false).make_shared();
     v8::V8::initialize_platform(platform);
@@ -15,7 +23,11 @@ fn main() -> Result<()> {
 
     let code = r#"
         async function run(a, b) {
-            return a + b;
+            return {
+                what: "the fuck",
+                whats: "going on",
+                age: 19
+            };
         }
     "#;
     let code = v8::String::new(scope, &format!("{}\nrun", code)).unwrap();
@@ -34,10 +46,12 @@ fn main() -> Result<()> {
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     resolver.resolve(scope, result).unwrap();
 
-    println!(
-        "result: {}",
-        promise.result(scope).to_rust_string_lossy(scope)
-    );
+    let result = promise.result(scope).to_object(scope);
+    if let Some(result) = result {
+        // parse result as serde struct
+        let test: TestStruct = serde_v8::from_v8(scope, result.into()).unwrap();
+        println!("{:?}", test);
+    }
 
     Ok(())
 }
