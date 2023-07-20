@@ -11,25 +11,24 @@ fn main() -> Result<()> {
     let context = v8::Context::new(scope);
 
     let scope = &mut v8::ContextScope::new(scope, context);
+    let global = context.global(scope);
+
     let code = r#"
-        async function run() {
-            return 3 + 10;
+        async function run(a, b) {
+            return a + b;
         }
     "#;
-
-    let code = v8::String::new(
-        scope,
-        &format!(
-            "(async () => {{ \n {} \n return await run(); \n }})()",
-            code
-        ),
-    )
-    .unwrap();
-    println!("js code: {}", code.to_rust_string_lossy(scope));
+    let code = v8::String::new(scope, &format!("{}\nrun", code)).unwrap();
 
     let script = v8::Script::compile(scope, code, None).unwrap();
-    let result = script.run(scope).unwrap();
+    let function = script.run(scope).unwrap();
+    let function = v8::Local::<v8::Function>::try_from(function).unwrap();
 
+    let a = v8::Number::new(scope, 5.0).into();
+    let b = v8::Number::new(scope, 64.0).into();
+    let args = vec![a, b];
+
+    let result = function.call(scope, global.into(), &args).unwrap();
     let promise = v8::Local::<v8::Promise>::try_from(result).unwrap();
 
     let resolver = v8::PromiseResolver::new(scope).unwrap();
