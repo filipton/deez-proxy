@@ -9,9 +9,22 @@ fn main() -> Result<()> {
 
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
-    let scope = &mut v8::ContextScope::new(scope, context);
 
-    let code = v8::String::new(scope, "(async () => {\n return 'dsa'; \n})()").unwrap();
+    let scope = &mut v8::ContextScope::new(scope, context);
+    let code = r#"
+        async function run() {
+            return 3 + 10;
+        }
+    "#;
+
+    let code = v8::String::new(
+        scope,
+        &format!(
+            "(async () => {{ \n {} \n return await run(); \n }})()",
+            code
+        ),
+    )
+    .unwrap();
     println!("js code: {}", code.to_rust_string_lossy(scope));
 
     let script = v8::Script::compile(scope, code, None).unwrap();
@@ -22,7 +35,10 @@ fn main() -> Result<()> {
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     resolver.resolve(scope, result).unwrap();
 
-    println!("result: {}", promise.result(scope).to_rust_string_lossy(scope));
+    println!(
+        "result: {}",
+        promise.result(scope).to_rust_string_lossy(scope)
+    );
 
     Ok(())
 }
