@@ -1,5 +1,11 @@
 use anyhow::Result;
 
+mod utils;
+mod apis {
+    pub mod console;
+    pub mod fetch;
+}
+
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]
 struct TestStruct {
@@ -21,17 +27,10 @@ fn main() -> Result<()> {
     let scope = &mut v8::ContextScope::new(scope, context);
     let global = context.global(scope);
 
-    // CONSOLE //
-    let console_key = v8::String::new(scope, "console").unwrap();
-    let console_val = v8::Object::new(scope);
-    global.set(scope, console_key.into(), console_val.into());
-
-    set_func(scope, console_val, "log", console_log);
-    set_func(scope, console_val, "debug", console_debug);
-    set_func(scope, console_val, "error", console_error);
+    apis::console::register(scope, global);
 
     // GLOBALS //
-    set_func(scope, global, "fetch", fetch);
+    //utils::set_func(scope, global, "fetch", fetch);
 
     let code = r#"
         async function run(a, b) {
@@ -83,73 +82,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[inline(always)]
-pub fn set_func(
-    scope: &mut v8::HandleScope,
-    obj: v8::Local<v8::Object>,
-    name: &str,
-    callback: impl v8::MapFnTo<v8::FunctionCallback>,
-) {
-    let key = v8::String::new(scope, name).unwrap();
-    let tmpl = v8::FunctionTemplate::new(scope, callback);
-    let val = tmpl.get_function(scope).unwrap();
-    val.set_name(key);
-    obj.set(scope, key.into(), val.into());
-}
 
-fn console_log(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    let mut s = String::new();
-    for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
-        s.push_str(&format!("{} ", arg));
-    }
-    println!("LOG: {}", s);
-    rv.set(v8::undefined(scope).into());
-}
-
-fn console_debug(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    let mut s = String::new();
-    for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
-        s.push_str(&format!("{} ", arg));
-    }
-    println!("DEBUG: {}", s);
-    rv.set(v8::undefined(scope).into());
-}
-
-fn console_error(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    let mut s = String::new();
-    for i in 0..args.length() {
-        let arg = args.get(i);
-        if arg.is_object() {
-            let arg = arg.to_object(scope);
-            if let Some(arg) = arg {
-                let arg: serde_json::Value = serde_v8::from_v8(scope, arg.into()).unwrap();
-                let arg = serde_json::to_string_pretty(&arg).unwrap();
-                s.push_str(&format!("{} ", arg));
-            }
-        } else {
-            let arg = arg.to_rust_string_lossy(scope);
-            s.push_str(&format!("{} ", arg));
-        }
-    }
-    println!("ERROR: {}", s);
-    rv.set(v8::undefined(scope).into());
-}
-
-// async function fetch(url) {
+/*
 fn fetch(
     scope: &mut v8::HandleScope,
     args: v8::FunctionCallbackArguments,
@@ -201,3 +135,4 @@ fn fetch_test2(
             .into(),
     );
 }
+*/
