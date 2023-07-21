@@ -26,16 +26,24 @@ fn main() -> Result<()> {
     global.set(scope, console_key.into(), console_val.into());
 
     set_func(scope, console_val, "log", console_log);
+    set_func(scope, console_val, "fetch", fetch);
 
     let code = r#"
         async function run(a, b) {
-            console.log("dsdasdsa", "vcx");
+            try {
+                let fetchRes = await console.fetch("https://google.com");
+                console.log("fetchRes", fetchRes);
+                console.log(await fetchRes.text(1));
+                console.log("a", a);
 
-            return {
-                what: "the fuck",
-                whats: "going on",
-                age: a + b
-            };
+                return {
+                    what: "the fuck",
+                    whats: "going on",
+                    age: a + b
+                };
+            } catch(e) {
+                console.log(e);
+            }
         }
     "#;
 
@@ -69,9 +77,9 @@ fn main() -> Result<()> {
 
 #[inline(always)]
 pub fn set_func(
-    scope: &mut v8::HandleScope<'_>,
+    scope: &mut v8::HandleScope,
     obj: v8::Local<v8::Object>,
-    name: &'static str,
+    name: &str,
     callback: impl v8::MapFnTo<v8::FunctionCallback>,
 ) {
     let key = v8::String::new(scope, name).unwrap();
@@ -101,5 +109,28 @@ fn fetch(
     args: v8::FunctionCallbackArguments,
     mut rv: v8::ReturnValue,
 ) {
-    // i should return a promise
+    let val = v8::Object::new(scope);
+    set_func(scope, val, "text", fetch_test);
+
+    let resolver = v8::PromiseResolver::new(scope).unwrap();
+    resolver.resolve(scope, val.into()).unwrap();
+
+    let promise = resolver.get_promise(scope);
+    rv.set(promise.into());
+}
+
+fn fetch_test(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut rv: v8::ReturnValue,
+) {
+    println!("fetch_test");
+    let mut s = String::new();
+    for i in 0..args.length() {
+        let arg = args.get(i).to_rust_string_lossy(scope);
+        s.push_str(&format!("{} ", arg));
+    }
+
+    println!("fetch_test: {}", s);
+    rv.set(v8::undefined(scope).into());
 }
