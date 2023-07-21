@@ -27,6 +27,8 @@ fn main() -> Result<()> {
     global.set(scope, console_key.into(), console_val.into());
 
     set_func(scope, console_val, "log", console_log);
+    set_func(scope, console_val, "debug", console_debug);
+    set_func(scope, console_val, "error", console_error);
 
     // GLOBALS //
     set_func(scope, global, "fetch", fetch);
@@ -39,6 +41,8 @@ fn main() -> Result<()> {
                 console.log(await fetchRes.text(1));
                 console.log(await fetchRes.json(1, 2, "31231"));
                 console.log("a", a);
+                console.error({ what: 123, the: 69, fuck: "dsa" });
+                console.error([1,3,6,1,3213,35542]);
 
                 return {
                     what: "the fuck",
@@ -107,6 +111,44 @@ fn console_log(
     rv.set(v8::undefined(scope).into());
 }
 
+fn console_debug(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut rv: v8::ReturnValue,
+) {
+    let mut s = String::new();
+    for i in 0..args.length() {
+        let arg = args.get(i).to_rust_string_lossy(scope);
+        s.push_str(&format!("{} ", arg));
+    }
+    println!("DEBUG: {}", s);
+    rv.set(v8::undefined(scope).into());
+}
+
+fn console_error(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut rv: v8::ReturnValue,
+) {
+    let mut s = String::new();
+    for i in 0..args.length() {
+        let arg = args.get(i);
+        if arg.is_object() {
+            let arg = arg.to_object(scope);
+            if let Some(arg) = arg {
+                let arg: serde_json::Value = serde_v8::from_v8(scope, arg.into()).unwrap();
+                let arg = serde_json::to_string_pretty(&arg).unwrap();
+                s.push_str(&format!("{} ", arg));
+            }
+        } else {
+            let arg = arg.to_rust_string_lossy(scope);
+            s.push_str(&format!("{} ", arg));
+        }
+    }
+    println!("ERROR: {}", s);
+    rv.set(v8::undefined(scope).into());
+}
+
 // async function fetch(url) {
 fn fetch(
     scope: &mut v8::HandleScope,
@@ -153,5 +195,9 @@ fn fetch_test2(
     }
 
     println!("fetch_test2: {}", s);
-    rv.set(v8::String::new(scope, "fetch_test2 return value").unwrap().into());
+    rv.set(
+        v8::String::new(scope, "fetch_test2 return value")
+            .unwrap()
+            .into(),
+    );
 }
