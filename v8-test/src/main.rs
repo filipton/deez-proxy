@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use anyhow::Result;
 
 #[derive(serde::Deserialize, Debug)]
@@ -44,14 +42,14 @@ fn main() -> Result<()> {
     let code = v8::String::new(scope, &format!("{}\nrun", code)).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
     let function = script.run(scope).unwrap();
-    let function = v8::Local::<v8::Function>::try_from(function).unwrap();
+    let function = v8::Local::<v8::Function>::try_from(function)?;
 
     let a = v8::Number::new(scope, 5.0).into();
     let b = v8::Number::new(scope, 64.0).into();
     let args = vec![a, b];
 
     let result = function.call(scope, global.into(), &args).unwrap();
-    let promise = v8::Local::<v8::Promise>::try_from(result).unwrap();
+    let promise = v8::Local::<v8::Promise>::try_from(result)?;
 
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     resolver.resolve(scope, result).unwrap();
@@ -93,6 +91,15 @@ fn console_log(
         let arg = args.get(i).to_rust_string_lossy(scope);
         s.push_str(&format!("{} ", arg));
     }
-    println!("{}", s);
+    println!("LOG: {}", s);
     rv.set(v8::undefined(scope).into());
+}
+
+// async function fetch(url) {
+fn fetch(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut rv: v8::ReturnValue,
+) {
+    // i should return a promise
 }
