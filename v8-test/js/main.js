@@ -4,8 +4,9 @@ async function run(a, b) {
         console.log(JSON.stringify({ "wat": 123 }));
 
         let fetchRes = await fetch("http://vps.filipton.space/");
-        console.log("fetchRes", fetchRes);
+        let fetchResCloon = fetchRes.clone();
         console.log(await fetchRes.text());
+        console.log(await fetchResCloon.arrayBuffer());
 
         return {
             what: "the fuck",

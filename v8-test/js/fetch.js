@@ -1,14 +1,13 @@
-
 class Response {
-    constructor(bodyArray) {
+    constructor(bodyArray, url) {
         this.body = bodyArray;
+        this.url = url;
         this.headers = {};
         this.ok = false;
         this.redirected = false;
         this.status = 0;
         this.statusText = "";
         this.type = "";
-        this.url = "";
 
         Object.defineProperty(this, "bodyUsed", {
             value: false,
@@ -38,6 +37,21 @@ class Response {
         });
         return JSON.parse(new TextDecoder().decode(this.body));
     }
+
+    async arrayBuffer() {
+        if (this.bodyUsed) {
+            throw new Error("Body already used");
+        }
+
+        Object.defineProperty(this, "bodyUsed", {
+            value: true,
+        });
+        return new ArrayBuffer(this.body);
+    }
+
+    clone() {
+        return new Response(this.body, this.url);
+    }
 }
 
 async function fetch(url, options) {
@@ -50,5 +64,5 @@ async function fetch(url, options) {
     }
 
     const res = await __internal_fetch(url, options);
-    return new Response(res);
+    return new Response(res, url);
 }
