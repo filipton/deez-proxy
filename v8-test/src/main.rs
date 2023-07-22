@@ -28,31 +28,12 @@ fn main() -> Result<()> {
     let global = context.global(scope);
 
     apis::console::register(scope, global);
+    apis::fetch::register(scope, global);
 
-    // GLOBALS //
-    //utils::set_func(scope, global, "fetch", fetch);
-
-    let code = r#"
-        async function run(a, b) {
-            try {
-                let fetchRes = await fetch("https://google.com");
-                console.log("fetchRes", fetchRes);
-                console.log(await fetchRes.text(1));
-                console.log(await fetchRes.json(1, 2, "31231"));
-                console.log("a", a);
-                console.error({ what: 123, the: 69, fuck: "dsa" });
-                console.error([1,3,6,1,3213,35542]);
-
-                return {
-                    what: "the fuck",
-                    whats: "going on",
-                    age: a + b
-                };
-            } catch(e) {
-                console.log(e);
-            }
-        }
-    "#;
+    let others_code = include_str!("../js/others.js");
+    let fetch_code = include_str!("../js/fetch.js");
+    let main_code = include_str!("../js/main.js");
+    let code = format!("{}\n{}\n{}", others_code, fetch_code, main_code);
 
     let code = v8::String::new(scope, &format!("{}\nrun", code)).unwrap();
     let script = v8::Script::compile(scope, code, None).unwrap();
@@ -81,58 +62,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
-
-/*
-fn fetch(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    let val = v8::Object::new(scope);
-    set_func(scope, val, "text", fetch_test);
-    set_func(scope, val, "json", fetch_test2);
-
-    let resolver = v8::PromiseResolver::new(scope).unwrap();
-    resolver.resolve(scope, val.into()).unwrap();
-
-    let promise = resolver.get_promise(scope);
-    rv.set(promise.into());
-}
-
-fn fetch_test(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    println!("fetch_test");
-    let mut s = String::new();
-    for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
-        s.push_str(&format!("{} ", arg));
-    }
-
-    println!("fetch_test: {}", s);
-    rv.set(v8::undefined(scope).into());
-}
-
-fn fetch_test2(
-    scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
-    mut rv: v8::ReturnValue,
-) {
-    println!("fetch_test2");
-    let mut s = String::new();
-    for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
-        s.push_str(&format!("{} ", arg));
-    }
-
-    println!("fetch_test2: {}", s);
-    rv.set(
-        v8::String::new(scope, "fetch_test2 return value")
-            .unwrap()
-            .into(),
-    );
-}
-*/

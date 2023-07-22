@@ -18,9 +18,11 @@ fn console_log(
 ) {
     let mut s = String::new();
     for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
+        let arg = args.get(i);
+        let arg = arg.to_rust_string_lossy(scope);
         s.push_str(&format!("{} ", arg));
     }
+
     println!("LOG: {}", s);
     rv.set(v8::undefined(scope).into());
 }
@@ -32,9 +34,11 @@ fn console_debug(
 ) {
     let mut s = String::new();
     for i in 0..args.length() {
-        let arg = args.get(i).to_rust_string_lossy(scope);
+        let arg = args.get(i);
+        let arg = arg.to_rust_string_lossy(scope);
         s.push_str(&format!("{} ", arg));
     }
+
     println!("DEBUG: {}", s);
     rv.set(v8::undefined(scope).into());
 }
@@ -47,18 +51,10 @@ fn console_error(
     let mut s = String::new();
     for i in 0..args.length() {
         let arg = args.get(i);
-        if arg.is_object() {
-            let arg = arg.to_object(scope);
-            if let Some(arg) = arg {
-                let arg: serde_json::Value = serde_v8::from_v8(scope, arg.into()).unwrap();
-                let arg = serde_json::to_string_pretty(&arg).unwrap();
-                s.push_str(&format!("{} ", arg));
-            }
-        } else {
-            let arg = arg.to_rust_string_lossy(scope);
-            s.push_str(&format!("{} ", arg));
-        }
+        let arg = arg.to_rust_string_lossy(scope);
+        s.push_str(&format!("{} ", arg));
     }
+
     println!("ERROR: {}", s);
     rv.set(v8::undefined(scope).into());
 }
