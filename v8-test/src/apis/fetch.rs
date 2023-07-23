@@ -1,4 +1,4 @@
-use crate::utils::{self, OptionExt, report_exceptions};
+use crate::utils;
 use color_eyre::Result;
 
 #[inline(always)]
@@ -7,31 +7,8 @@ pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) -> R
 
     utils::set_func(&mut scope, global, "fetch", fetch);
     utils::set_func(&mut scope, global, "__internal_fetch", __internal_fetch);
+    utils::register_script(include_str!("./js/fetch.js"), "fetch.js", &mut scope)?;
 
-    let filename = v8::String::new(&mut scope, "fetch.js").to_res("Failed to create new string")?;
-    let source_map_url = v8::undefined(&mut scope);
-    let origin = v8::ScriptOrigin::new(
-        &mut scope,
-        filename.into(),
-        0,
-        0,
-        false,
-        0,
-        source_map_url.into(),
-        false,
-        false,
-        false,
-    );
-
-    let script = v8::String::new(&mut scope, include_str!("../../js/fetch.js"))
-        .to_res("Failed to create new string")?;
-
-    let compile_res = v8::Script::compile(&mut scope, script, Some(&origin));
-    if let Some(compile_res) = compile_res {
-        let _ = compile_res.run(&mut scope);
-    } else {
-        report_exceptions(scope)?;
-    }
     Ok(())
 }
 
@@ -61,7 +38,7 @@ fn __internal_fetch(
 
 fn fetch(
     scope: &mut v8::HandleScope,
-    args: v8::FunctionCallbackArguments,
+    _args: v8::FunctionCallbackArguments,
     mut rv: v8::ReturnValue,
 ) {
     let val = v8::Object::new(scope);

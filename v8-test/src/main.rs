@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use color_eyre::Result;
 use utils::OptionExt;
 
 mod utils;
@@ -12,11 +12,14 @@ mod apis {
 struct TestStruct {
     what: String,
     whats: String,
-    age: u8,
 }
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+
+    let scripts_cache: rustc_hash::FxHashMap<&str, v8::Local<v8::Script>> =
+        rustc_hash::FxHashMap::default();
+
     let platform = v8::new_default_platform(0, false).make_shared();
     v8::V8::initialize_platform(platform);
     v8::V8::initialize();
@@ -32,18 +35,33 @@ fn main() -> Result<()> {
 
     apis::console::register(&mut scope, global);
     apis::fetch::register(&mut scope, global)?;
+    utils::register_script(include_str!("./apis/js/others.js"), "others.js", &mut scope)?;
 
-    let others_code = include_str!("../js/others.js");
-    let main_code = include_str!("../js/main.js");
-    let code = format!("{}\n{}", others_code, main_code);
+    let main_code = std::fs::read_to_string("./main.js")?;
+    let code = format!(
+        r#"
+        async function run(req) {{
+            try {{
+                return await handle(req);
+            }}
+            catch (e) {{
+                console.error(e.stack);
+            }}
+        }}
 
-    let code = v8::String::new(&mut scope, &format!("{}\nrun", code))
-        .to_res("Failed to change code to v8 string!")?;
+        {}
+
+        run
+    "#,
+        main_code
+    );
+
+    let code = v8::String::new(&mut scope, &code).to_res("Failed to change code to v8 string!")?;
 
     let script = match v8::Script::compile(&mut scope, code, None) {
         Some(script) => script,
         None => {
-            utils::report_exceptions(scope)?;
+            utils::report_exceptions(&mut scope)?;
             return Err(color_eyre::eyre::eyre!("Error compiling script"));
         }
     };
@@ -53,8 +71,7 @@ fn main() -> Result<()> {
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
     let a = v8::Number::new(&mut scope, 5.0).into();
-    let b = v8::Number::new(&mut scope, 64.0).into();
-    let args = vec![a, b];
+    let args = vec![a];
 
     let result = function
         .call(&mut scope, global.into(), &args)
@@ -76,7 +93,6 @@ fn main() -> Result<()> {
         }
     }
 
-    println!("time: {:?}", start.elapsed());
-
+    println!("time: {:?}", start.elapsed().as_micros());
     Ok(())
 }
