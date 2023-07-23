@@ -17,7 +17,6 @@ struct TestStruct {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
-
     let platform = v8::new_default_platform(0, false).make_shared();
     v8::V8::initialize_platform(platform);
     v8::V8::initialize();
@@ -32,12 +31,11 @@ fn main() -> Result<()> {
     let global = context.global(&mut scope);
 
     apis::console::register(&mut scope, global);
-    apis::fetch::register(&mut scope, global);
+    apis::fetch::register(&mut scope, global)?;
 
     let others_code = include_str!("../js/others.js");
-    let fetch_code = include_str!("../js/fetch.js");
     let main_code = include_str!("../js/main.js");
-    let code = format!("{}\n{}\n{}", others_code, fetch_code, main_code);
+    let code = format!("{}\n{}", others_code, main_code);
 
     let code = v8::String::new(&mut scope, &format!("{}\nrun", code))
         .to_res("Failed to change code to v8 string!")?;
@@ -45,11 +43,12 @@ fn main() -> Result<()> {
     let script = match v8::Script::compile(&mut scope, code, None) {
         Some(script) => script,
         None => {
-            report_exceptions(scope)?;
+            utils::report_exceptions(scope)?;
             return Err(color_eyre::eyre::eyre!("Error compiling script"));
         }
     };
 
+    let start = cpu_time::ThreadTime::now();
     let function = script.run(&mut scope).to_res("Failed to run script!")?;
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
@@ -77,76 +76,7 @@ fn main() -> Result<()> {
         }
     }
 
-    Ok(())
-}
-
-fn report_exceptions(mut try_catch: v8::TryCatch<v8::HandleScope>) -> Result<()> {
-    let exception = try_catch.exception().to_res("Failed to get exception!")?;
-    let exception_string = exception
-        .to_string(&mut try_catch)
-        .to_res("Failed to convert exception to string!")?
-        .to_rust_string_lossy(&mut try_catch);
-    let message = if let Some(message) = try_catch.message() {
-        message
-    } else {
-        eprintln!("{}", exception_string);
-        return Ok(());
-    };
-
-    // Print (filename):(line number): (message).
-    let filename = message
-        .get_script_resource_name(&mut try_catch)
-        .map_or_else(
-            || "(unknown)".into(),
-            |s| {
-                s.to_string(&mut try_catch)
-                    .unwrap()
-                    .to_rust_string_lossy(&mut try_catch)
-            },
-        );
-    let line_number = message.get_line_number(&mut try_catch).unwrap_or_default();
-
-    eprintln!("{}:{}: {}", filename, line_number, exception_string);
-
-    // Print line of source code.
-    let source_line = message
-        .get_source_line(&mut try_catch)
-        .map(|s| {
-            s.to_string(&mut try_catch)
-                .unwrap()
-                .to_rust_string_lossy(&mut try_catch)
-        })
-        .to_res("Failed to get source line!")?;
-    eprintln!("{}", source_line);
-
-    // Print wavy underline (GetUnderline is deprecated).
-    let start_column = message.get_start_column();
-    let end_column = message.get_end_column();
-
-    for _ in 0..start_column {
-        eprint!(" ");
-    }
-
-    for _ in start_column..end_column {
-        eprint!("^");
-    }
-
-    eprintln!();
-
-    // Print stack trace
-    let stack_trace = if let Some(stack_trace) = try_catch.stack_trace() {
-        stack_trace
-    } else {
-        return Ok(());
-    };
-    let stack_trace = unsafe { v8::Local::<v8::String>::cast(stack_trace) };
-    let stack_trace = stack_trace
-        .to_string(&mut try_catch)
-        .map(|s| s.to_rust_string_lossy(&mut try_catch));
-
-    if let Some(stack_trace) = stack_trace {
-        eprintln!("{}", stack_trace);
-    }
+    println!("time: {:?}", start.elapsed());
 
     Ok(())
 }

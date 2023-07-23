@@ -1,0 +1,18 @@
+[package]
+name = "hasmap-perf"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+dashmap = "5.5.0"
+fnv = "1.0.7"
+fxhash = "0.2.1"
+lazy_static = "1.4.0"
+rustc-hash = "1.1.0"
+
+[[bench]]
+name = "hashmap"
+harness = false
