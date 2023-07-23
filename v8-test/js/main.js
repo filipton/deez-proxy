@@ -1,4 +1,3 @@
-
 async function run(a, b) {
     try {
         console.log(JSON.stringify({ "wat": 123 }));
@@ -7,6 +6,11 @@ async function run(a, b) {
         let fetchResCloon = fetchRes.clone();
         console.log(await fetchRes.text());
         console.log(await fetchResCloon.arrayBuffer());
+        
+        console.debug("debug");
+        console.warn("warn");
+        console.info("info");
+        console.log(dwa.cxz());
 
         return {
             what: "the fuck",
@@ -14,6 +18,6 @@ async function run(a, b) {
             age: a + b
         };
     } catch (e) {
-        console.error(e);
+        console.error(e.stack);
     }
 }

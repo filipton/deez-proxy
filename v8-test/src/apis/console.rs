@@ -1,4 +1,5 @@
 use crate::utils;
+use colored::Colorize;
 
 #[inline(always)]
 pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) {
@@ -9,6 +10,8 @@ pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) {
     utils::set_func(scope, console_val, "log", console_log);
     utils::set_func(scope, console_val, "debug", console_debug);
     utils::set_func(scope, console_val, "error", console_error);
+    utils::set_func(scope, console_val, "warn", console_warn);
+    utils::set_func(scope, console_val, "info", console_log);
 }
 
 fn console_log(
@@ -23,7 +26,23 @@ fn console_log(
         s.push_str(&format!("{} ", arg));
     }
 
-    println!("LOG: {}", s);
+    println!("{}", s);
+    rv.set(v8::undefined(scope).into());
+}
+
+fn console_warn(
+    scope: &mut v8::HandleScope,
+    args: v8::FunctionCallbackArguments,
+    mut rv: v8::ReturnValue,
+) {
+    let mut s = String::new();
+    for i in 0..args.length() {
+        let arg = args.get(i);
+        let arg = arg.to_rust_string_lossy(scope);
+        s.push_str(&format!("{} ", arg));
+    }
+
+    println!("{}", s.yellow());
     rv.set(v8::undefined(scope).into());
 }
 
@@ -39,7 +58,7 @@ fn console_debug(
         s.push_str(&format!("{} ", arg));
     }
 
-    println!("DEBUG: {}", s);
+    println!("{}", s.blue());
     rv.set(v8::undefined(scope).into());
 }
 
@@ -55,6 +74,6 @@ fn console_error(
         s.push_str(&format!("{} ", arg));
     }
 
-    println!("ERROR: {}", s);
+    println!("{}", s.red().bold());
     rv.set(v8::undefined(scope).into());
 }

@@ -1,3 +1,5 @@
+use color_eyre::eyre::Result;
+
 #[inline(always)]
 pub fn set_func(
     scope: &mut v8::HandleScope,
@@ -10,4 +12,17 @@ pub fn set_func(
     let val = tmpl.get_function(scope).unwrap();
     val.set_name(key);
     obj.set(scope, key.into(), val.into());
+}
+
+pub trait OptionExt<T> {
+    fn to_res(self, error_msg: &'static str) -> Result<T>;
+}
+
+impl<T> OptionExt<T> for Option<T> {
+    fn to_res(self, error_msg: &'static str) -> Result<T> {
+        match self {
+            Some(val) => Ok(val),
+            None => return Err(color_eyre::eyre::eyre!(error_msg)),
+        }
+    }
 }
