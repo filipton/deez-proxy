@@ -1,8 +1,9 @@
 use crate::utils;
+use color_eyre::Result;
 use colored::Colorize;
 
 #[inline(always)]
-pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) {
+pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) -> Result<()> {
     let console_key = v8::String::new(scope, "console").unwrap();
     let console_val = v8::Object::new(scope);
     global.set(scope, console_key.into(), console_val.into());
@@ -12,6 +13,8 @@ pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) {
     utils::set_func(scope, console_val, "error", console_error);
     utils::set_func(scope, console_val, "warn", console_warn);
     utils::set_func(scope, console_val, "info", console_log);
+
+    Ok(())
 }
 
 fn console_log(
