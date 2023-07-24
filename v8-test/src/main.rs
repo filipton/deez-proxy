@@ -13,16 +13,16 @@ async fn main() -> Result<()> {
 
     let mut tasks = vec![];
 
-    tasks.push(tokio::spawn(port_worker(7071)));
-    tasks.push(tokio::spawn(port_worker(7072)));
+    tasks.push(tokio::spawn(port_worker("0.0.0.0", 7071)));
+    tasks.push(tokio::spawn(port_worker("0.0.0.0", 7072)));
 
     futures::future::try_join_all(tasks).await?;
 
     Ok(())
 }
 
-async fn port_worker(port: u16) -> Result<()> {
-    let addr = format!("127.0.0.1:{}", port);
+async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
+    let addr = format!("{}:{}", bind_ip, port);
     let listener = TcpListener::bind(&addr).await?;
     println!("Listening on: {}", addr);
 

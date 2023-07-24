@@ -7,6 +7,12 @@ pub struct V8Response {
     pub ip: String,
 }
 
+#[derive(serde::Serialize, Debug)]
+#[allow(dead_code)]
+pub struct V8Request {
+    pub test_num: u8,
+}
+
 pub fn install() {
     let platform = v8::new_default_platform(0, false).make_shared();
     v8::V8::initialize_platform(platform);
@@ -53,11 +59,11 @@ pub async fn get_script_res(script: &str) -> Result<V8Response> {
     let function = script.run(&mut scope).to_res("Failed to run script!")?;
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
-    let a = v8::Number::new(&mut scope, 5.0).into();
-    let args = vec![a];
+    let request = V8Request { test_num: 69 };
+    let arg = serde_v8::to_v8(&mut scope, request)?.into();
 
     let result = function
-        .call(&mut scope, global.into(), &args)
+        .call(&mut scope, global.into(), &vec![arg])
         .to_res("Failed to call function!")?;
     let promise = v8::Local::<v8::Promise>::try_from(result)?;
 

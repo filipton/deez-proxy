@@ -1,5 +1,7 @@
 async function handle(req) {
     try {
+        console.error(JSON.stringify(req));
+        
         /*
         console.log(req);
         console.log(JSON.stringify({ "wat": 123 }));
@@ -14,7 +16,7 @@ async function handle(req) {
         console.info("info");
         */
 
-        let res = await fetch("https://pastebin.com/raw/8mzw2D2F");
+        let res = await fetch("https://files.usbus.space/test.txt");
         let destIp = await res.text();
 
         return {
