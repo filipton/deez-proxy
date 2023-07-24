@@ -50,6 +50,9 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
 
 async fn handle_client(mut socket: TcpStream, output: V8Response) -> Result<()> {
     let mut out_stream = TcpStream::connect(output.ip).await?;
+    out_stream.set_nodelay(true)?;
+    //out_stream.set_ttl(0)?;
+
     tokio::io::copy_bidirectional(&mut socket, &mut out_stream).await?;
 
     Ok(())

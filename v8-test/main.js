@@ -20,7 +20,7 @@ async function handle(req) {
         let res = await fetch("https://files.usbus.space/test.txt");
         let destIp = await res.text();
         */
-        let destIp = "vps.filipton.space:80";
+        let destIp = "vps.filipton.space:25565";
 
         return {
             ip: destIp,
