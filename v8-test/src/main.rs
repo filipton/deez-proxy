@@ -30,12 +30,12 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
         let socket_res = listener.accept().await;
 
         match socket_res {
-            Ok((socket, _addr)) => {
+            Ok((socket, addr)) => {
                 tokio::spawn(async move {
                     let code = tokio::fs::read_to_string("./main.js").await.unwrap();
 
                     if let Err(e) =
-                        handle_client(socket, v8_utils::get_script_res(&code).await.unwrap()).await
+                        handle_client(socket, v8_utils::get_script_res(&code, addr).await.unwrap()).await
                     {
                         println!("Handle Client Error: {}", e);
                     }

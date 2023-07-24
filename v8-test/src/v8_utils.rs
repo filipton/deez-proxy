@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use crate::utils::OptionExt;
 use color_eyre::Result;
 
@@ -10,7 +12,7 @@ pub struct V8Response {
 #[derive(serde::Serialize, Debug)]
 #[allow(dead_code)]
 pub struct V8Request {
-    pub test_num: u8,
+    pub ip: String,
 }
 
 pub fn install() {
@@ -19,7 +21,7 @@ pub fn install() {
     v8::V8::initialize();
 }
 
-pub async fn get_script_res(script: &str) -> Result<V8Response> {
+pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response> {
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -59,7 +61,9 @@ pub async fn get_script_res(script: &str) -> Result<V8Response> {
     let function = script.run(&mut scope).to_res("Failed to run script!")?;
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
-    let request = V8Request { test_num: 69 };
+    let request = V8Request { 
+        ip: format!("{}", addr.ip())
+    };
     let arg = serde_v8::to_v8(&mut scope, request)?.into();
 
     let result = function
