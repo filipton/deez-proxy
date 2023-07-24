@@ -24,6 +24,7 @@ async function handle(req) {
 
         return {
             ip: destIp,
+            no_delay: true,
         };
     } catch (e) {
         console.error(e.stack);
