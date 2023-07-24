@@ -1,10 +1,19 @@
 use color_eyre::Result;
-use wasmer::{Store, Module, Instance, Value};
+use wasmer::{Cranelift, EngineBuilder, Instance, Module, Store, Value};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut store = Store::default();
-    let module = Module::new(&store, include_bytes!("../wasm/pkg/wasm_bg.wasm"))?;
+    let compiler = Cranelift::default();
+    let mut features = wasmer::Features::default();
+    features.multi_value(true);
+
+    let engine = EngineBuilder::new(compiler).set_features(Some(features));
+
+    let mut store = Store::new(engine);
+    let module = Module::new(
+        &store,
+        include_bytes!("../wasm/target/wasm32-unknown-unknown/release/wasm.wasm"),
+    )?;
 
     let import_object = wasmer::imports! {};
     let instance = Instance::new(&mut store, &module, &import_object)?;
