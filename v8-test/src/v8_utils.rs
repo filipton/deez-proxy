@@ -1,5 +1,11 @@
-use crate::{TestStruct, utils::OptionExt};
+use crate::utils::OptionExt;
 use color_eyre::Result;
+
+#[derive(serde::Deserialize, Debug)]
+#[allow(dead_code)]
+pub struct V8Response {
+    pub ip: String,
+}
 
 pub fn install() {
     let platform = v8::new_default_platform(0, false).make_shared();
@@ -7,7 +13,7 @@ pub fn install() {
     v8::V8::initialize();
 }
 
-pub async fn get_script_res(script: &str) -> Result<TestStruct> {
+pub async fn get_script_res(script: &str) -> Result<V8Response> {
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -62,7 +68,7 @@ pub async fn get_script_res(script: &str) -> Result<TestStruct> {
 
     let result = promise.result(&mut scope).to_object(&mut scope);
     if let Some(result) = result {
-        let result_res: Result<TestStruct, serde_v8::Error> =
+        let result_res: Result<V8Response, serde_v8::Error> =
             serde_v8::from_v8(&mut scope, result.into());
 
         if let Ok(result) = result_res {

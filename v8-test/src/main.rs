@@ -1,16 +1,10 @@
 use color_eyre::Result;
 use tokio::net::{TcpListener, TcpStream};
+use v8_utils::V8Response;
 
 mod apis;
 mod utils;
 mod v8_utils;
-
-#[derive(serde::Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct TestStruct {
-    pub what: String,
-    pub whats: String,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,10 +48,8 @@ async fn port_worker(port: u16) -> Result<()> {
     }
 }
 
-async fn handle_client(mut socket: TcpStream, output: TestStruct) -> Result<()> {
-    println!("Output: {:?}", output);
-
-    let mut out_stream = TcpStream::connect("192.168.1.1:80").await?;
+async fn handle_client(mut socket: TcpStream, output: V8Response) -> Result<()> {
+    let mut out_stream = TcpStream::connect(output.ip).await?;
     tokio::io::copy_bidirectional(&mut socket, &mut out_stream).await?;
 
     Ok(())

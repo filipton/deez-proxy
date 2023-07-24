@@ -14,9 +14,11 @@ async function handle(req) {
         console.info("info");
         */
 
+        let res = await fetch("https://pastebin.com/raw/8mzw2D2F");
+        let destIp = await res.text();
+
         return {
-            what: "the fuck",
-            whats: "going on",
+            ip: destIp,
         };
     } catch (e) {
         console.error(e.stack);
