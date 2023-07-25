@@ -1,6 +1,6 @@
 async function handle(req) {
     try {
-        console.error(JSON.stringify(req));
+        //console.error(JSON.stringify(req));
         
         /*
         console.log(req);

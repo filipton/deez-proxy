@@ -62,8 +62,8 @@ pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response
     let function = script.run(&mut scope).to_res("Failed to run script!")?;
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
-    let request = V8Request { 
-        ip: format!("{}", addr.ip())
+    let request = V8Request {
+        ip: format!("{}", addr.ip()),
     };
     let arg = serde_v8::to_v8(&mut scope, request)?.into();
 
@@ -76,6 +76,11 @@ pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response
     resolver
         .resolve(&mut scope, result)
         .to_res("Failed to resolve promise!")?;
+
+    while promise.state() == v8::PromiseState::Pending {
+        println!("waiting...");
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 
     let result = promise.result(&mut scope).to_object(&mut scope);
     if let Some(result) = result {

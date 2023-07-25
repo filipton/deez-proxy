@@ -24,13 +24,13 @@ fn __internal_fetch(
         .to_vec()
         .into_boxed_slice();
 
-    let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(response);
-    let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
-    let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
-
     let resolver = v8::PromiseResolver::new(scope).unwrap();
-    resolver.resolve(scope, val.into()).unwrap();
 
     let promise = resolver.get_promise(scope);
     rv.set(promise.into());
+
+    let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(response);
+    let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
+    let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
+    resolver.resolve(scope, val.into()).unwrap();
 }
