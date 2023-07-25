@@ -1,5 +1,8 @@
+use std::{collections::HashMap, str::FromStr};
+
 use crate::utils;
 use color_eyre::Result;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 #[inline(always)]
 pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) -> Result<()> {
@@ -16,33 +19,100 @@ fn __internal_fetch(
     args: v8::FunctionCallbackArguments,
     mut rv: v8::ReturnValue,
 ) {
-    let url = args.get(0).to_rust_string_lossy(scope);
-    let response = reqwest::blocking::get(url)
-        .unwrap()
-        .bytes()
-        .unwrap()
-        .to_vec()
-        .into_boxed_slice();
-
+    let request: FetchRequest = serde_v8::from_v8(scope, args.get(0)).unwrap();
     let resolver = v8::PromiseResolver::new(scope).unwrap();
-
     let promise = resolver.get_promise(scope);
     rv.set(promise.into());
 
+    /*
     let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(response);
     let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
     let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
     resolver.resolve(scope, val.into()).unwrap();
+    */
+
+    println!("Request: {:?}", request);
+    let mut headers: HeaderMap = HeaderMap::new();
+    for (k, v) in request.headers.headers {
+        headers.insert(
+            HeaderName::from_str(&k).unwrap(),
+            HeaderValue::from_str(&v).unwrap(),
+        );
+    }
+
+    let response = reqwest::blocking::Client::new()
+        .request(
+            reqwest::Method::from_bytes(request.method.as_bytes()).unwrap(),
+            request.url,
+        )
+        .headers(headers)
+        .body(request.body.unwrap_or_default())
+        .send()
+        .unwrap();
+
+    let headers = response.headers().clone();
+    let is_ok = response.status().is_success();
+    let status = response.status();
+    let url = response.url().clone();
+
+    let response = FetchResponse {
+        body: response.bytes().unwrap().to_vec(),
+        bodyUsed: false,
+        headers: headers
+            .iter()
+            .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap().to_string()))
+            .collect(),
+        ok: is_ok,
+        redirected: false,
+        status: status.as_u16(),
+        statusText: status.canonical_reason().unwrap_or_default().to_string(),
+        type_: "basic".to_string(),
+        url: url.to_string(),
+    };
+
+    println!("Response: {:?}", response);
+
+    let response = serde_v8::to_v8(scope, &response).unwrap();
+    resolver.resolve(scope, response.into()).unwrap();
 }
 
-fn get_ureq_request(method: &str, url: &str) -> ureq::Request {
-    match method {
-        "GET" => ureq::get(url),
-        "POST" => ureq::post(url),
-        "PUT" => ureq::put(url),
-        "DELETE" => ureq::delete(url),
-        "PATCH" => ureq::patch(url),
-        "HEAD" => ureq::head(url),
-        _ => panic!("Invalid method"),
-    }
+#[derive(serde::Deserialize, Debug)]
+#[allow(non_snake_case, dead_code)]
+struct FetchRequest {
+    body: Option<Vec<u8>>,
+    bodyUsed: bool,
+    cache: String,
+    credentials: String,
+    headers: FetchHeaders,
+    integrity: String,
+    method: String,
+    mode: String,
+    redirect: String,
+    referrer: String,
+    referrerPolicy: String,
+    signal: String,
+    url: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+#[allow(non_snake_case, dead_code)]
+struct FetchHeaders {
+    headers: HashMap<String, String>,
+}
+
+#[derive(serde::Serialize, Debug)]
+#[allow(non_snake_case, dead_code)]
+struct FetchResponse {
+    body: Vec<u8>,
+    bodyUsed: bool,
+    headers: HashMap<String, String>,
+    ok: bool,
+    redirected: bool,
+    status: u16,
+    statusText: String,
+
+    #[serde(rename = "type")]
+    type_: String,
+
+    url: String,
 }

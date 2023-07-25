@@ -1,13 +1,13 @@
 class Response {
-    constructor() {
-        this.body = "";
-        this.headers = new Headers();
-        this.ok = false;
-        this.redirected = false;
-        this.status = 0;
-        this.statusText = "";
-        this.type = "";
-        this.url = "";
+    constructor(resp) {
+        this.body = new ArrayBuffer(resp?.body || null);
+        this.headers = resp?.headers || new Headers();
+        this.ok = resp?.ok || false;
+        this.redirected = resp?.redirected || false;
+        this.status = resp?.status || 0;
+        this.statusText = resp?.statusText || "";
+        this.type = resp?.type || "basic"; // NOT USED
+        this.url = resp?.url || "";
 
         Object.defineProperty(this, "bodyUsed", {
             value: false,
@@ -108,18 +108,28 @@ class Headers {
 
 class Request {
     constructor(url, options) {
-        this.body = options.body || null;
-        this.cache = options.cache || "default"; // NOT USED
-        this.credentials = options.credentials || "omit"; // NOT USED
-        this.destination = options.destination || "document"; // NOT USED
-        this.headers = options.headers || new Headers();
-        this.integrity = options.integrity || ""; // NOT USED
-        this.method = options.method || "GET";
-        this.mode = options.mode || "no-cors"; // NOT USED
-        this.redirect = options.redirect || "follow"; // NOT USED
-        this.referrer = options.referrer || ""; // NOT USED
-        this.referrerPolicy = options.referrerPolicy || ""; // NOT USED
-        this.signal = options.signal || ""; // NOT USED
+        this.body = null;
+        if (options?.body) {
+            if (typeof options.body == "string") {
+                this.body = new ArrayBuffer(new TextEncoder().encode(options.body));
+            } else if (options.body instanceof ArrayBuffer) {
+                this.body = options.body;
+            } else {
+                throw new Error("Invalid body type");
+            }
+        }
+
+        this.cache = options?.cache || "default"; // NOT USED
+        this.credentials = options?.credentials || "omit"; // NOT USED
+        this.destination = options?.destination || "document"; // NOT USED
+        this.headers = options?.headers || new Headers();
+        this.integrity = options?.integrity || ""; // NOT USED
+        this.method = options?.method || "GET";
+        this.mode = options?.mode || "no-cors"; // NOT USED
+        this.redirect = options?.redirect || "follow"; // NOT USED
+        this.referrer = options?.referrer || ""; // NOT USED
+        this.referrerPolicy = options?.referrerPolicy || ""; // NOT USED
+        this.signal = options?.signal || ""; // NOT USED
         this.url = url;
 
         Object.defineProperty(this, "bodyUsed", {
@@ -184,5 +194,5 @@ class Request {
 
 async function fetch(url, options) {
     let req = new Request(url, options);
-    return await __internal_fetch(req);
+    return new Response(await __internal_fetch(req));
 }
