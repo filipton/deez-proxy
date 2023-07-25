@@ -19,7 +19,7 @@ fn main() {
 
     let ext = Extension::builder("my_ext").ops(vec![op_sum::DECL]).build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
+        extensions: vec![ext, console::console::init_ops(), console::console::init_js_only()],
         ..Default::default()
     });
 
@@ -29,7 +29,7 @@ fn main() {
             r#"
 // Print helper function, calling Deno.core.print()
 function print(value) {
-    console.log("DSA");
+  Deno.core.print(console);
   Deno.core.print(value.toString()+"\n");
 }
 

@@ -23,6 +23,8 @@ pub fn install() {
 }
 
 pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response> {
+    let i_start = std::time::Instant::now();
+
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -88,7 +90,8 @@ pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response
             serde_v8::from_v8(&mut scope, result.into());
 
         if let Ok(result) = result_res {
-            println!("time: {:?}", start.elapsed().as_micros());
+            println!("time: {:?}", i_start.elapsed().as_micros());
+            println!("cpu time: {:?}", start.elapsed().as_micros());
             return Ok(result);
         }
     }
