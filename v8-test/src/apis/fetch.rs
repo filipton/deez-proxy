@@ -34,3 +34,15 @@ fn __internal_fetch(
     let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
     resolver.resolve(scope, val.into()).unwrap();
 }
+
+fn get_ureq_request(method: &str, url: &str) -> ureq::Request {
+    match method {
+        "GET" => ureq::get(url),
+        "POST" => ureq::post(url),
+        "PUT" => ureq::put(url),
+        "DELETE" => ureq::delete(url),
+        "PATCH" => ureq::patch(url),
+        "HEAD" => ureq::head(url),
+        _ => panic!("Invalid method"),
+    }
+}
