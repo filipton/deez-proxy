@@ -20,20 +20,28 @@ fn __internal_fetch(
     mut rv: v8::ReturnValue,
 ) {
     let request: FetchRequest = serde_v8::from_v8(scope, args.get(0)).unwrap();
+    let body = args.get(1);
+    let array = v8::Local::<v8::ArrayBuffer>::try_from(body).unwrap();
+    println!("Array: {:?}", array.byte_length());
+
+    //let data = args.get(1).to_object(scope).unwrap();
+
+    /*
+    let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
+    let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
+    */
+
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     let promise = resolver.get_promise(scope);
     rv.set(promise.into());
 
     /*
-    let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(response);
-    let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
-    let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
     resolver.resolve(scope, val.into()).unwrap();
     */
 
-    println!("Request: {:?}", request);
     let mut headers: HeaderMap = HeaderMap::new();
-    for (k, v) in request.headers.headers {
+    for (k, v) in request.headers {
         headers.insert(
             HeaderName::from_str(&k).unwrap(),
             HeaderValue::from_str(&v).unwrap(),
@@ -46,7 +54,7 @@ fn __internal_fetch(
             request.url,
         )
         .headers(headers)
-        .body(request.body.unwrap_or_default())
+        //.body(request.body.unwrap_or_default())
         .send()
         .unwrap();
 
@@ -70,8 +78,6 @@ fn __internal_fetch(
         url: url.to_string(),
     };
 
-    println!("Response: {:?}", response);
-
     let response = serde_v8::to_v8(scope, &response).unwrap();
     resolver.resolve(scope, response.into()).unwrap();
 }
@@ -79,18 +85,8 @@ fn __internal_fetch(
 #[derive(serde::Deserialize, Debug)]
 #[allow(non_snake_case, dead_code)]
 struct FetchRequest {
-    body: Option<Vec<u8>>,
-    bodyUsed: bool,
-    cache: String,
-    credentials: String,
-    headers: FetchHeaders,
-    integrity: String,
+    headers: HashMap<String, String>,
     method: String,
-    mode: String,
-    redirect: String,
-    referrer: String,
-    referrerPolicy: String,
-    signal: String,
     url: String,
 }
 

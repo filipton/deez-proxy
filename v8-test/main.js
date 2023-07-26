@@ -1,10 +1,11 @@
 async function handle(req) {
     try {
         let fetchRes = await fetch("http://vps.filipton.space/", { body: "test" });
+        console.log(fetchRes);
         //let fetchResCloon = fetchRes.clone();
         console.log(await fetchRes.text());
         //console.log(await fetchResCloon.arrayBuffer());
-        
+
         console.debug("debug");
         console.warn("warn");
         console.info("info");

@@ -1,6 +1,12 @@
 class Response {
     constructor(resp) {
-        this.body = new ArrayBuffer(resp?.body || null);
+        this.body = new ReadableStream();
+        if (resp?.body) {
+            for (let byte of resp.body) {
+                this.body.enqueue(byte);
+            }
+        }
+
         this.headers = resp?.headers || new Headers();
         this.ok = resp?.ok || false;
         this.redirected = resp?.redirected || false;
@@ -108,12 +114,16 @@ class Headers {
 
 class Request {
     constructor(url, options) {
-        this.body = null;
+        this.body = new ReadableStream();
         if (options?.body) {
             if (typeof options.body == "string") {
-                this.body = new ArrayBuffer(new TextEncoder().encode(options.body));
+                for (let byte of new TextEncoder().encode(options.body)) {
+                    this.body.enqueue(byte);
+                }
             } else if (options.body instanceof ArrayBuffer) {
-                this.body = options.body;
+                for (let byte of options.body) {
+                    this.body.enqueue(byte);
+                }
             } else {
                 throw new Error("Invalid body type");
             }
@@ -192,7 +202,25 @@ class Request {
     }
 }
 
+class InnerFetchRequest {
+    constructor(headers, method, url) {
+        this.headers = headers;
+        this.method = method;
+        this.url = url;
+    }
+}
+
 async function fetch(url, options) {
     let req = new Request(url, options);
-    return new Response(await __internal_fetch(req));
+
+    let body = new Uint8Array();
+    let reader = req.body.getReader();
+    let result = await reader.read();
+    while (!result.done) {
+        body = new Uint8Array([...body, result.value]);
+        result = await reader.read();
+    }
+
+    let innerReq = new InnerFetchRequest(req.headers.headers, req.method, req.url);
+    return new Response(await __internal_fetch(innerReq, body.buffer));
 }
