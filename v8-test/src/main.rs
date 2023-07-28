@@ -34,11 +34,9 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
                 tokio::spawn(async move {
                     let code = tokio::fs::read_to_string("./main.js").await.unwrap();
                     let res = v8_utils::get_script_res(&code, port, addr).await.unwrap();
-                    if res.block.unwrap_or(false) {
-                        println!("Blocking: {}", addr);
+                    if res.block_connection.unwrap_or(false) {
                         return;
                     } else if res.hang_connection.unwrap_or(false) {
-                        println!("Hanging: {}", addr);
                         tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
                         return;
                     }

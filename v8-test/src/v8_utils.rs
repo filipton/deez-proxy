@@ -6,7 +6,7 @@ use color_eyre::Result;
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct V8Response {
-    pub block: Option<bool>,
+    pub block_connection: Option<bool>,
     pub hang_connection: Option<bool>,
     pub ip: Option<String>,
     pub no_delay: Option<bool>,
@@ -26,8 +26,6 @@ pub fn install() {
 }
 
 pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result<V8Response> {
-    let i_start = std::time::Instant::now();
-
     let isolate = &mut v8::Isolate::new(Default::default());
     let scope = &mut v8::HandleScope::new(isolate);
     let context = v8::Context::new(scope);
@@ -36,7 +34,6 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
     let global = context.global(&mut scope);
     crate::apis::register_all(&mut scope, global)?;
 
-    let start = cpu_time::ThreadTime::now();
     let code = format!(
         r#"
         async function run(req) {{
@@ -64,6 +61,7 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
         }
     };
 
+    let cpu_time_start = cpu_time::ThreadTime::now();
     let function = script.run(&mut scope).to_res("Failed to run script!")?;
     let function = v8::Local::<v8::Function>::try_from(function)?;
 
@@ -83,9 +81,14 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
         .resolve(&mut scope, result)
         .to_res("Failed to resolve promise!")?;
 
+    let mut promise_time = 0;
     while promise.state() == v8::PromiseState::Pending {
-        println!("waiting...");
         std::thread::sleep(std::time::Duration::from_millis(1));
+        promise_time += 1;
+
+        if promise_time > 5000 {
+            color_eyre::eyre::bail!("Promise timed out!");
+        }
     }
 
     let result = promise.result(&mut scope).to_object(&mut scope);
@@ -94,8 +97,7 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
             serde_v8::from_v8(&mut scope, result.into());
 
         if let Ok(result) = result_res {
-            println!("time: {:?}", i_start.elapsed().as_micros());
-            println!("cpu time: {:?}", start.elapsed().as_micros());
+            println!("cpu time: {:?}", cpu_time_start.elapsed().as_micros());
             return Ok(result);
         }
     }
