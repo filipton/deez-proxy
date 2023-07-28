@@ -1,22 +1,18 @@
 async function handle(req) {
     try {
-        let fetchRes = await fetch("https://echo.filipton.space/r16073722548685778558", { body: "test" });
-        let cloned = fetchRes.clone();
-        console.log(await fetchRes.text());
-        console.log("cloned: ", await cloned.text());
+        console.log("Connection port: ", req.port);
 
-        /*
-        let res = await fetch("https://files.usbus.space/test.txt");
-        let destIp = await res.text();
-        */
         let destIp = "vps.filipton.space:80";
-
-        return {
-            //block: true,
-            hang_connection: true,
-            ip: destIp,
-            no_delay: true,
-        };
+        if (req.port == 7071) {
+            return {
+                hang_connection: true,
+            };
+        } else if (req.port == 7072) {
+            return {
+                ip: destIp,
+                no_delay: true,
+            };
+        }
     } catch (e) {
         console.error(e.stack);
     }

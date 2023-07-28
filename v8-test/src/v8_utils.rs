@@ -16,6 +16,7 @@ pub struct V8Response {
 #[allow(dead_code)]
 pub struct V8Request {
     pub ip: String,
+    pub port: u16,
 }
 
 pub fn install() {
@@ -24,7 +25,7 @@ pub fn install() {
     v8::V8::initialize();
 }
 
-pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response> {
+pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result<V8Response> {
     let i_start = std::time::Instant::now();
 
     let isolate = &mut v8::Isolate::new(Default::default());
@@ -68,6 +69,7 @@ pub async fn get_script_res(script: &str, addr: SocketAddr) -> Result<V8Response
 
     let request = V8Request {
         ip: format!("{}", addr.ip()),
+        port,
     };
     let arg = serde_v8::to_v8(&mut scope, request)?.into();
 

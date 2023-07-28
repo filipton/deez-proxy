@@ -33,7 +33,7 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
                     let code = tokio::fs::read_to_string("./main.js").await.unwrap();
-                    let res = v8_utils::get_script_res(&code, addr).await.unwrap();
+                    let res = v8_utils::get_script_res(&code, port, addr).await.unwrap();
                     if res.block.unwrap_or(false) {
                         println!("Blocking: {}", addr);
                         return;
