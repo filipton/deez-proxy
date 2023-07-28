@@ -84,7 +84,11 @@ class Response {
 
     clone() {
         let res = new Response();
-        res.body = this.body;
+        res.body = new ReadableStream();
+        for (let byte of this.body.queue) {
+            res.body.enqueue(byte);
+        }
+
         res.headers = this.headers;
         res.ok = this.ok;
         res.redirected = this.redirected;

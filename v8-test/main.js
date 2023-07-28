@@ -1,14 +1,9 @@
 async function handle(req) {
     try {
-        let fetchRes = await fetch("https://echo.filipton.space/r16073722548685778558", {body: "test"});
-        console.log(fetchRes);
-        //let fetchResCloon = fetchRes.clone();
+        let fetchRes = await fetch("https://echo.filipton.space/r16073722548685778558", { body: "test" });
+        let cloned = fetchRes.clone();
         console.log(await fetchRes.text());
-        //console.log(await fetchResCloon.arrayBuffer());
-
-        console.debug("debug");
-        console.warn("warn");
-        console.info("info");
+        console.log("cloned: ", await cloned.text());
 
         /*
         let res = await fetch("https://files.usbus.space/test.txt");
