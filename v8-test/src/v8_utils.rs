@@ -97,7 +97,7 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
             serde_v8::from_v8(&mut scope, result.into());
 
         if let Ok(result) = result_res {
-            println!("cpu time: {:?}", cpu_time_start.elapsed().as_micros());
+            //println!("cpu time: {:?}", cpu_time_start.elapsed().as_micros());
             return Ok(result);
         }
     }

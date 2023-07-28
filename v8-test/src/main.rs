@@ -1,6 +1,6 @@
 use color_eyre::{eyre::eyre, Result};
+use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
-use v8_utils::V8Response;
 
 mod apis;
 mod utils;
@@ -32,16 +32,7 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
         match socket_res {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
-                    let code = tokio::fs::read_to_string("./main.js").await.unwrap();
-                    let res = v8_utils::get_script_res(&code, port, addr).await.unwrap();
-                    if res.block_connection.unwrap_or(false) {
-                        return;
-                    } else if res.hang_connection.unwrap_or(false) {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-                        return;
-                    }
-
-                    if let Err(e) = handle_client(socket, res).await {
+                    if let Err(e) = handle_client(socket, port, addr).await {
                         println!("Handle Client Error: {}", e);
                     }
                 });
@@ -53,10 +44,20 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
     }
 }
 
-async fn handle_client(mut socket: TcpStream, output: V8Response) -> Result<()> {
+async fn handle_client(mut socket: TcpStream, port: u16, addr: SocketAddr) -> Result<()> {
+    let code = tokio::fs::read_to_string("./main.js").await?;
+
+    let res = v8_utils::get_script_res(&code, port, addr).await?;
+    if res.block_connection.unwrap_or(false) {
+        return Ok(());
+    } else if res.hang_connection.unwrap_or(false) {
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        return Ok(());
+    }
+
     let mut out_stream =
-        TcpStream::connect(output.ip.ok_or(eyre!("Ip is null in V8Response"))?).await?;
-    out_stream.set_nodelay(output.no_delay.unwrap_or(false))?;
+        TcpStream::connect(res.ip.ok_or(eyre!("Ip is null in V8Response"))?).await?;
+    out_stream.set_nodelay(res.no_delay.unwrap_or(false))?;
 
     tokio::io::copy_bidirectional(&mut socket, &mut out_stream).await?;
 
