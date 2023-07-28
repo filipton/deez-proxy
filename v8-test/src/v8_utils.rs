@@ -6,8 +6,9 @@ use color_eyre::Result;
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct V8Response {
-    pub ip: String,
-    pub no_delay: bool,
+    pub block: Option<bool>,
+    pub ip: Option<String>,
+    pub no_delay: Option<bool>,
 }
 
 #[derive(serde::Serialize, Debug)]

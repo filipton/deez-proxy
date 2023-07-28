@@ -1,4 +1,4 @@
-use color_eyre::Result;
+use color_eyre::{eyre::eyre, Result};
 use tokio::net::{TcpListener, TcpStream};
 use v8_utils::V8Response;
 
@@ -33,10 +33,13 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
                     let code = tokio::fs::read_to_string("./main.js").await.unwrap();
+                    let res = v8_utils::get_script_res(&code, addr).await.unwrap();
+                    if res.block.unwrap_or(false) {
+                        println!("Blocking: {}", addr);
+                        return;
+                    }
 
-                    if let Err(e) =
-                        handle_client(socket, v8_utils::get_script_res(&code, addr).await.unwrap()).await
-                    {
+                    if let Err(e) = handle_client(socket, res).await {
                         println!("Handle Client Error: {}", e);
                     }
                 });
@@ -49,8 +52,9 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
 }
 
 async fn handle_client(mut socket: TcpStream, output: V8Response) -> Result<()> {
-    let mut out_stream = TcpStream::connect(output.ip).await?;
-    out_stream.set_nodelay(output.no_delay)?;
+    let mut out_stream =
+        TcpStream::connect(output.ip.ok_or(eyre!("Ip is null in V8Response"))?).await?;
+    out_stream.set_nodelay(output.no_delay.unwrap_or(false))?;
 
     tokio::io::copy_bidirectional(&mut socket, &mut out_stream).await?;
 
