@@ -7,6 +7,7 @@ use color_eyre::Result;
 #[allow(dead_code)]
 pub struct V8Response {
     pub block: Option<bool>,
+    pub hang_connection: Option<bool>,
     pub ip: Option<String>,
     pub no_delay: Option<bool>,
 }

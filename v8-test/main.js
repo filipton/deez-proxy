@@ -12,7 +12,8 @@ async function handle(req) {
         let destIp = "vps.filipton.space:80";
 
         return {
-            block: true,
+            //block: true,
+            hang_connection: true,
             ip: destIp,
             no_delay: true,
         };

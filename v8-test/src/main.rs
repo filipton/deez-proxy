@@ -37,6 +37,10 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
                     if res.block.unwrap_or(false) {
                         println!("Blocking: {}", addr);
                         return;
+                    } else if res.hang_connection.unwrap_or(false) {
+                        println!("Hanging: {}", addr);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+                        return;
                     }
 
                     if let Err(e) = handle_client(socket, res).await {
