@@ -1,6 +1,6 @@
 async function handle(req) {
     try {
-        let fetchRes = await fetch("http://vps.filipton.space/", { body: "test" });
+        let fetchRes = await fetch("https://echo.filipton.space/r16073722548685778558", {body: "test"});
         console.log(fetchRes);
         //let fetchResCloon = fetchRes.clone();
         console.log(await fetchRes.text());

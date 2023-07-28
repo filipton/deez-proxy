@@ -20,25 +20,17 @@ fn __internal_fetch(
     mut rv: v8::ReturnValue,
 ) {
     let request: FetchRequest = serde_v8::from_v8(scope, args.get(0)).unwrap();
-    let body = args.get(1);
-    let array = v8::Local::<v8::ArrayBuffer>::try_from(body).unwrap();
-    println!("Array: {:?}", array.byte_length());
-
-    //let data = args.get(1).to_object(scope).unwrap();
-
-    /*
-    let buf = v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-    let buf = v8::ArrayBuffer::with_backing_store(scope, &buf.into());
-    let val = v8::Int8Array::new(scope, buf, 0, buf.byte_length()).unwrap();
-    */
+    let body = v8::Local::<v8::ArrayBuffer>::try_from(args.get(1)).unwrap();
+    let body = body
+        .get_backing_store()
+        .to_vec()
+        .iter()
+        .map(|v| v.get())
+        .collect::<Vec<u8>>();
 
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     let promise = resolver.get_promise(scope);
     rv.set(promise.into());
-
-    /*
-    resolver.resolve(scope, val.into()).unwrap();
-    */
 
     let mut headers: HeaderMap = HeaderMap::new();
     for (k, v) in request.headers {
@@ -54,7 +46,7 @@ fn __internal_fetch(
             request.url,
         )
         .headers(headers)
-        //.body(request.body.unwrap_or_default())
+        .body(body)
         .send()
         .unwrap();
 

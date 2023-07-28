@@ -30,7 +30,16 @@ class Response {
         Object.defineProperty(this, "bodyUsed", {
             value: true,
         });
-        return new TextDecoder().decode(this.body);
+
+        let body = new Uint8Array();
+        let reader = this.body.getReader();
+        let result = await reader.read();
+        while (!result.done) {
+            body = new Uint8Array([...body, result.value]);
+            result = await reader.read();
+        }
+
+        return new TextDecoder().decode(body);
     }
 
     async json() {
@@ -41,7 +50,16 @@ class Response {
         Object.defineProperty(this, "bodyUsed", {
             value: true,
         });
-        return JSON.parse(new TextDecoder().decode(this.body));
+
+        let body = new Uint8Array();
+        let reader = this.body.getReader();
+        let result = await reader.read();
+        while (!result.done) {
+            body = new Uint8Array([...body, result.value]);
+            result = await reader.read();
+        }
+
+        return JSON.parse(new TextDecoder().decode(body));
     }
 
     async arrayBuffer() {
@@ -52,7 +70,16 @@ class Response {
         Object.defineProperty(this, "bodyUsed", {
             value: true,
         });
-        return new ArrayBuffer(this.body);
+
+        let body = new Uint8Array();
+        let reader = this.body.getReader();
+        let result = await reader.read();
+        while (!result.done) {
+            body = new Uint8Array([...body, result.value]);
+            result = await reader.read();
+        }
+
+        return new ArrayBuffer(body);
     }
 
     clone() {
