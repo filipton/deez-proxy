@@ -1,6 +1,6 @@
 use crate::utils;
 use color_eyre::Result;
-use colored::Colorize;
+use color_eyre::owo_colors::OwoColorize;
 
 #[inline(always)]
 pub fn register(scope: &mut v8::HandleScope, global: v8::Local<v8::Object>) -> Result<()> {

@@ -2,14 +2,12 @@ use color_eyre::{eyre::eyre, Result};
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 
-mod apis;
 mod utils;
-mod v8_utils;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
-    v8_utils::install();
+    v8_engine::utils::install();
 
     let args = std::env::args().collect::<Vec<String>>();
     let ports = utils::parse_ports(args.get(1).unwrap_or(&String::from("7070")))?;
@@ -49,7 +47,7 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
 async fn handle_client(mut socket: TcpStream, port: u16, addr: SocketAddr) -> Result<()> {
     let code = tokio::fs::read_to_string("./main.js").await?;
 
-    let res = v8_utils::get_script_res(&code, port, addr).await?;
+    let res = v8_engine::utils::get_script_res(&code, port, addr).await?;
     if res.block_connection.unwrap_or(false) {
         return Ok(());
     } else if res.hang_connection.unwrap_or(false) {

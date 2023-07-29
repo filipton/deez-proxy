@@ -1,0 +1,15 @@
+[package]
+name = "v8-engine"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+color-eyre.workspace = true
+reqwest = { version = "0.11.18", features = ["rustls-tls", "blocking"] }
+v8 = "0.74.2"
+cpu-time = "1.0.0"
+serde = { version = "1.0.173", features = ["derive"] }
+serde_json = "1.0.103"
+serde_v8 = "0.106.0"
