@@ -11,11 +11,13 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     v8_utils::install();
 
+    let args = std::env::args().collect::<Vec<String>>();
+    let ports = utils::parse_ports(args.get(1).unwrap_or(&String::from("7070")))?;
     let mut tasks = vec![];
 
-    tasks.push(tokio::spawn(port_worker("0.0.0.0", 7071)));
-    tasks.push(tokio::spawn(port_worker("0.0.0.0", 7072)));
-
+    for port in ports {
+        tasks.push(tokio::spawn(port_worker("0.0.0.0", port)));
+    }
     futures::future::try_join_all(tasks).await?;
 
     Ok(())

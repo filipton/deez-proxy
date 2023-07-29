@@ -10,6 +10,8 @@ pub struct V8Response {
     pub hang_connection: Option<bool>,
     pub ip: Option<String>,
     pub no_delay: Option<bool>,
+
+    pub cpu_time: Option<u128>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -96,8 +98,8 @@ pub async fn get_script_res(script: &str, port: u16, addr: SocketAddr) -> Result
         let result_res: Result<V8Response, serde_v8::Error> =
             serde_v8::from_v8(&mut scope, result.into());
 
-        if let Ok(result) = result_res {
-            //println!("cpu time: {:?}", cpu_time_start.elapsed().as_micros());
+        if let Ok(mut result) = result_res {
+            result.cpu_time = Some(cpu_time_start.elapsed().as_micros());
             return Ok(result);
         }
     }
