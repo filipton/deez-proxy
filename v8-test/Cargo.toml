@@ -12,16 +12,17 @@ futures = "0.3.28"
 tokio = { version = "1.29.1", features = ["full"] }
 v8-engine = { path = "v8-engine" }
 
-[workspace.dependencies]
-color-eyre = { version = "0.6.2" }
-
-[profile.release]
-strip = true
-opt-level = "s"
-lto = true
-codegen-units = 1
-
 [workspace]
 members = [
     "v8-engine",
 ]
+
+[workspace.dependencies]
+color-eyre = { version = "0.6.2" }
+
+#comment out to improve build size
+#[profile.release]
+#strip = true
+#opt-level = "s"
+#lto = true
+#codegen-units = 1
