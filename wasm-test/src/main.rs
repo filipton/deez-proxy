@@ -1,13 +1,13 @@
 use color_eyre::Result;
 use wasmer::{Cranelift, EngineBuilder, Instance, Module, Store, Value};
+use wasmer_engine_jit::JIT;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut store = Store::default();
-    let module = Module::new(
-        &store,
-        include_bytes!("../wasix/target/wasm32-wasmer-wasi/debug/wasix.wasm"),
-    )?;
+    let bytes = include_bytes!("../wasix/test.wasmu");
+
+    let mut store = Store::new(Cranelift::default());
+    let module = Module::new(&store, bytes)?;
 
     let import_object = wasmer::imports! {};
     let instance = Instance::new(&mut store, &module, &import_object)?;
