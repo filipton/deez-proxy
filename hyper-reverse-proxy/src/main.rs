@@ -5,7 +5,6 @@ use hyper::{
     Response,
 };
 use hyper_util::rt::TokioIo;
-use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 
 /*
@@ -16,9 +15,7 @@ use tokio::net::{TcpListener, TcpStream};
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
-    let listener = TcpListener::bind(&addr).await?;
-
+    let listener = TcpListener::bind("0.0.0.0:8080").await?;
     loop {
         let (stream, _) = listener.accept().await?;
         let io = TokioIo::new(stream);
@@ -40,7 +37,7 @@ async fn main() -> Result<()> {
 async fn proxy_service(
     req: Request<hyper::body::Incoming>,
 ) -> Result<Response<BoxBody<Bytes, hyper::Error>>> {
-    let addr = "localhost:7070".to_string();
+    let addr = "sls.filipton.space:80".to_string();
     if req.method() == Method::CONNECT {
         tokio::task::spawn(async move {
             match hyper::upgrade::on(req).await {
