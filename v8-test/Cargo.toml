@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 color-eyre.workspace = true
+tokio.workspace = true
 futures = "0.3.28"
 #rustc-hash = "1.1.0"
-tokio = { version = "1.29.1", features = ["full"] }
 v8-engine = { path = "v8-engine" }
 
 [workspace]
@@ -19,6 +19,7 @@ members = [
 
 [workspace.dependencies]
 color-eyre = { version = "0.6.2" }
+tokio = { version = "1.29.1", features = ["full"] }
 
 #comment out to improve build size
 #[profile.release]
