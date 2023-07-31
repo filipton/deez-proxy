@@ -23,6 +23,13 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
     Ok(())
 }
 
+#[op]
+async fn op_callback(response: V8Response) -> Result<(), deno_core::error::AnyError> {
+    println!("Rust: op_callback {:?}", response);
+
+    Ok(())
+}
+
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]
 pub struct V8Response {
@@ -31,7 +38,7 @@ pub struct V8Response {
     pub ip: Option<String>,
     pub no_delay: Option<bool>,
 
-    pub cpu_time: Option<u128>,
+    pub cpu_time: Option<u64>,
 }
 
 #[derive(serde::Serialize, Debug)]
@@ -44,7 +51,7 @@ pub struct V8Request {
 #[tokio::main]
 async fn main() {
     let ext = Extension::builder("my_ext")
-        .ops(vec![op_sum::DECL, op_sleep::DECL])
+        .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
         .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
         extensions: vec![ext],
@@ -61,37 +68,31 @@ async fn main() {
     let req = deno_core::serde_json::to_string(&req).unwrap();
     let script = format!(
         r#"
-            async function test(req) {{
-                Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
+        async function test(req) {{
+            Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
-                let val = Deno.core.ops.op_sum([1,2,3]);
-                Deno.core.print(val + "\n");
-                Deno.core.print("DBG: LOL\n");
-                await Deno.core.ops.op_sleep(1000);
-                Deno.core.print("DBG: LOL2\n");
-                return {{
-                    test: 69
-                }};
-            }}
+            let val = Deno.core.ops.op_sum([1,2,3]);
+            Deno.core.print(val + "\n");
+            Deno.core.print("DBG: LOL\n");
+            //await Deno.core.ops.op_sleep(1000);
+            Deno.core.print("DBG: LOL2\n");
+            return {{
+                ip: req.ip,
+                cpu_time: 321,
+            }};
+        }}
 
-            test({}).then((res) => {{
-                Deno.core.print("dsa: " + JSON.stringify(res) + "\n");
-            }});
-            "#,
+        test({}).then(async (res) => {{
+            await Deno.core.ops.op_callback(res);
+        }});
+        "#,
         req
     );
-    let res = runtime.execute_script("main.js", script.into()).unwrap();
+    runtime.execute_script("main.js", script.into()).unwrap();
 
     while let Err(e) = runtime.run_event_loop(false).await {
         println!("Error: {}", e);
     }
-
-    let scope = &mut runtime.handle_scope();
-    let local = deno_core::v8::Local::new(scope, res);
-    let deserialized: deno_core::serde_json::Value =
-        deno_core::serde_v8::from_v8(scope, local).unwrap();
-
-    println!("Result: {:?}", deserialized);
 
     println!("Script took {}", start.elapsed().as_micros());
 }
