@@ -37,18 +37,12 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 }
 
 #[op]
-async fn op_callback(response: V8Response) -> Result<(), deno_core::error::AnyError> {
-    println!("Rust: op_callback {:?}", response);
-    /*
-    CALLBACKS
-        .write()
+async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core::error::AnyError> {
+    println!("Rust: {} op_callback {:?}", job_id, response);
+    JOB_QUEUE
+        .send_response(job_id, response)
         .await
-        .as_mut()
-        .unwrap()
-        .send(response)
-        .await
-        .unwrap();
-        */
+        .expect("Failed to send response");
 
     Ok(())
 }
@@ -73,13 +67,13 @@ pub struct V8Request {
 
 #[derive(serde::Serialize, Debug)]
 pub struct WorkerRequest<T> {
-    job_id: u64,
+    job_id: u32,
     value: T,
 }
 
 pub struct Queue<S, R> {
-    senders: Arc<RwLock<Vec<tokio::sync::mpsc::UnboundedSender<WorkerRequest<S>>>>>,
-    returners: Arc<RwLock<HashMap<u64, tokio::sync::mpsc::Sender<R>>>>,
+    senders: Arc<std::sync::RwLock<Vec<tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
+    returners: Arc<RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
 
     max: AtomicUsize,
     next: AtomicUsize,
@@ -88,7 +82,7 @@ pub struct Queue<S, R> {
 impl<S, R> Queue<S, R> {
     pub fn new() -> Self {
         Self {
-            senders: Arc::new(RwLock::new(Vec::new())),
+            senders: Arc::new(std::sync::RwLock::new(Vec::new())),
             returners: Arc::new(RwLock::new(HashMap::new())),
 
             max: AtomicUsize::new(0),
@@ -96,9 +90,9 @@ impl<S, R> Queue<S, R> {
         }
     }
 
-    pub async fn add_worker(&self) -> tokio::sync::mpsc::UnboundedReceiver<WorkerRequest<S>> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WorkerRequest<S>>();
-        self.senders.write().await.push(tx);
+    pub fn add_worker(&self) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
+        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerRequest<S>>(100);
+        self.senders.write().unwrap().push(tx);
         self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         rx
@@ -111,7 +105,7 @@ impl<S, R> Queue<S, R> {
         }
 
         let (tx, rx) = tokio::sync::mpsc::channel::<R>(1);
-        let returner_id = rand::thread_rng().gen::<u64>();
+        let returner_id = rand::thread_rng().gen::<u32>();
         let w_req = WorkerRequest {
             job_id: returner_id,
             value,
@@ -122,15 +116,15 @@ impl<S, R> Queue<S, R> {
         }
 
         let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
-        let senders = self.senders.read().await;
-        senders[next].send(w_req).map_err(|_| {
+        let senders = self.senders.read().unwrap();
+        senders[next].send(w_req).await.map_err(|_| {
             color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
         })?;
 
         Ok(rx)
     }
 
-    pub async fn send_response(&self, job_id: u64, value: R) -> Result<()> {
+    pub async fn send_response(&self, job_id: u32, value: R) -> Result<()> {
         let mut returners = self.returners.write().await;
         let tx = returners.remove(&job_id).ok_or_else(|| {
             color_eyre::eyre::eyre!("Failed to find returner for job_id {:?}", job_id)
@@ -147,25 +141,35 @@ impl<S, R> Queue<S, R> {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 100;
+    let workers_count = 10;
     let mut workers = vec![];
     for i in 0..workers_count {
-        workers.push(tokio::spawn(v8_worker(i)));
+        workers.push(tokio::spawn(async move {
+            _ = v8_worker(i);
+        }));
     }
 
-    let mut res = JOB_QUEUE
-        .enqueue(V8Request {
-            ip: format!("192.168.1.1"),
-            port: 42069,
-        })
-        .await?;
+    loop {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        let start = std::time::Instant::now();
+        let mut res = JOB_QUEUE
+            .enqueue(V8Request {
+                ip: format!("192.168.1.1"),
+                port: 42069,
+            })
+            .await?;
 
-    let res = res.recv().await.unwrap();
-    println!("Got response: {:?}", res);
-
+        let res = res.recv().await.unwrap();
+        println!("Got response: {:?}", res);
+        println!("Script took {}", start.elapsed().as_micros());
+    }
     futures::future::join_all(workers).await;
+    Ok(())
+}
 
-    /*
+fn v8_worker(worker_id: u64) -> Result<()> {
+    let mut rx = JOB_QUEUE.add_worker();
+
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
         .build();
@@ -174,26 +178,20 @@ async fn main() -> Result<()> {
         ..Default::default()
     });
 
-    let start = std::time::Instant::now();
+    loop {
+        if let Ok(job) = rx.try_recv() {
+            println!("Job ({}): {:?}", worker_id, job);
 
-    let req = V8Request {
-        ip: "192.158.1.69".to_string(),
-        port: 42069,
-    };
-
-    //let mut channel = tokio::sync::mpsc::channel::<V8Response>(1);
-    // *CALLBACKS.write().await = Some(channel.0);
-    let req = deno_core::serde_json::to_string(&req).unwrap();
-    let script = format!(
-        r#"
+            let req = deno_core::serde_json::to_string(&job.value).unwrap();
+            let script = format!(
+                r#"
         async function test(req) {{
             Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
             let val = Deno.core.ops.op_sum([1,2,3]);
             Deno.core.print(val + "\n");
             Deno.core.print("DBG: LOL\n");
-            //await Deno.core.ops.op_sleep(1000);
-            Deno.core.print("DBG: LOL2\n");
+
             return {{
                 ip: req.ip,
                 cpu_time: 321,
@@ -201,47 +199,23 @@ async fn main() -> Result<()> {
         }}
 
         test({}).then(async (res) => {{
-            await Deno.core.ops.op_callback(res);
+            await Deno.core.ops.op_callback({}, res);
         }});
         "#,
-        req
-    );
-    runtime.execute_script("main.js", script.into()).unwrap();
+                req, job.job_id
+            );
+            runtime.execute_script("main.js", script.into()).unwrap();
 
-    while let Err(e) = runtime.run_event_loop(false).await {
-        println!("Error: {}", e);
+            /*
+            while let Err(e) = runtime.run_event_loop(false).await {
+                println!("Error: {}", e);
+            }
+            */
+
+            // LOAD SIMULATION
+            //tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
-
-    //let response = channel.1.recv().await.unwrap();
-    //println!("Response: {:?}", response);
-
-    println!("Script took {}", start.elapsed().as_micros());
-    */
-
-    Ok(())
-}
-
-async fn v8_worker(worker_id: u64) -> Result<()> {
-    let mut rx = JOB_QUEUE.add_worker().await;
-
-    while let Some(job) = rx.recv().await {
-        println!("Job ({}): {:?}", worker_id, job);
-        JOB_QUEUE
-            .send_response(
-                job.job_id,
-                V8Response {
-                    ip: Some(job.value.ip),
-                    cpu_time: Some(123),
-                    block_connection: None,
-                    hang_connection: None,
-                    no_delay: None,
-                },
-            )
-            .await?;
-
-        // LOAD SIMULATION
-        tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
-    }
-
-    Ok(())
 }
