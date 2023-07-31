@@ -1,6 +1,5 @@
 use color_eyre::Result;
 use wasmer::{Cranelift, EngineBuilder, Instance, Module, Store, Value};
-use wasmer_engine_jit::JIT;
 
 #[tokio::main]
 async fn main() -> Result<()> {
