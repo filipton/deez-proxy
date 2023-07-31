@@ -141,11 +141,14 @@ impl<S, R> Queue<S, R> {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 10;
+    let workers_count = 100;
     let mut workers = vec![];
     for i in 0..workers_count {
-        workers.push(tokio::spawn(async move {
-            _ = v8_worker(i);
+        workers.push(std::thread::spawn(move || {
+            let res = v8_worker(i);
+            if let Err(e) = res {
+                println!("Worker {} failed: {:?}", i, e);
+            }
         }));
     }
 
@@ -163,8 +166,6 @@ async fn main() -> Result<()> {
         println!("Got response: {:?}", res);
         println!("Script took {}", start.elapsed().as_micros());
     }
-    futures::future::join_all(workers).await;
-    Ok(())
 }
 
 fn v8_worker(worker_id: u64) -> Result<()> {
@@ -178,13 +179,12 @@ fn v8_worker(worker_id: u64) -> Result<()> {
         ..Default::default()
     });
 
-    loop {
-        if let Ok(job) = rx.try_recv() {
-            println!("Job ({}): {:?}", worker_id, job);
+    while let Some(job) = rx.blocking_recv() {
+        println!("Job ({}): {:?}", worker_id, job);
 
-            let req = deno_core::serde_json::to_string(&job.value).unwrap();
-            let script = format!(
-                r#"
+        let req = deno_core::serde_json::to_string(&job.value).unwrap();
+        let script = format!(
+            r#"
         async function test(req) {{
             Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
@@ -202,20 +202,21 @@ fn v8_worker(worker_id: u64) -> Result<()> {
             await Deno.core.ops.op_callback({}, res);
         }});
         "#,
-                req, job.job_id
-            );
-            runtime.execute_script("main.js", script.into()).unwrap();
+            req, job.job_id
+        );
+        runtime.execute_script("main.js", script.into()).unwrap();
 
-            /*
-            while let Err(e) = runtime.run_event_loop(false).await {
-                println!("Error: {}", e);
-            }
-            */
-
-            // LOAD SIMULATION
-            //tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
+        /*
+        while let Err(e) = runtime.run_event_loop(false).await {
+            println!("Error: {}", e);
         }
+        */
 
-        std::thread::sleep(std::time::Duration::from_millis(1));
+        // LOAD SIMULATION
+        //tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
     }
+
+    println!("Worker {} finished", worker_id);
+
+    Ok(())
 }
