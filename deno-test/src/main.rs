@@ -1,4 +1,5 @@
 use color_eyre::Result;
+use deno_core::JsRuntimeForSnapshot;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicUsize;
@@ -32,6 +33,7 @@ fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
 async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
     println!("Sleeping for {}ms", duration);
     tokio::time::sleep(tokio::time::Duration::from_millis(duration)).await;
+    println!("Done sleeping");
 
     Ok(())
 }
@@ -153,7 +155,7 @@ async fn main() -> Result<()> {
     }
 
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         let start = std::time::Instant::now();
         let mut res = JOB_QUEUE
             .enqueue(V8Request {
@@ -169,15 +171,29 @@ async fn main() -> Result<()> {
 }
 
 fn v8_worker(worker_id: u64) -> Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
+
     let mut rx = JOB_QUEUE.add_worker();
+
+    /*
+    let tokio_runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+        */
 
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
         .build();
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
-        ..Default::default()
-    });
+    let mut runtime = JsRuntimeForSnapshot::new(
+        RuntimeOptions {
+            extensions: vec![ext],
+            ..Default::default()
+        },
+        Default::default(),
+    );
 
     while let Some(job) = rx.blocking_recv() {
         println!("Job ({}): {:?}", worker_id, job);
@@ -190,6 +206,7 @@ fn v8_worker(worker_id: u64) -> Result<()> {
 
             let val = Deno.core.ops.op_sum([1,2,3]);
             Deno.core.print(val + "\n");
+            await Deno.core.ops.op_sleep(1000);
             Deno.core.print("DBG: LOL\n");
 
             return {{
@@ -206,17 +223,20 @@ fn v8_worker(worker_id: u64) -> Result<()> {
         );
         runtime.execute_script("main.js", script.into()).unwrap();
 
+        rt.block_on(runtime.run_event_loop(false)).unwrap();
+
         /*
-        while let Err(e) = runtime.run_event_loop(false).await {
-            println!("Error: {}", e);
-        }
-        */
+        tokio_runtime
+            .block_on(runtime.run_event_loop(true))
+            .unwrap();
+            */
+
+        //_ = runtime.run_event_loop(true).await;
 
         // LOAD SIMULATION
         //tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
     }
 
     println!("Worker {} finished", worker_id);
-
     Ok(())
 }
