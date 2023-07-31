@@ -1,5 +1,7 @@
 use color_eyre::Result;
+use rand::Rng;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -72,32 +74,46 @@ pub struct V8Request {
 }
 
 pub struct Queue<T> {
-    values: Arc<RwLock<Vec<T>>>,
+    senders: Arc<RwLock<Vec<tokio::sync::mpsc::UnboundedSender<T>>>>,
+    max: AtomicUsize,
+    next: Arc<RwLock<usize>>,
 }
 
 impl<T> Queue<T> {
     pub fn new() -> Self {
         Self {
-            values: Arc::new(RwLock::new(Vec::new())),
+            senders: Arc::new(RwLock::new(Vec::new())),
+            max: AtomicUsize::new(0),
+            next: Arc::new(RwLock::new(0)),
         }
     }
 
-    pub async fn enqueue(&self, value: T) {
-        self.values.write().await.push(value);
+    pub async fn add_worker(&self) -> tokio::sync::mpsc::UnboundedReceiver<T> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<T>();
+        self.senders.write().await.push(tx);
+        self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        rx
     }
 
-    pub async fn dequeue(&self) -> Option<T> {
-        let mut values = self.values.write().await;
-        if values.is_empty() {
-            return None;
+    pub async fn enqueue(&self, value: T) -> Result<()> {
+        let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
+        if max == 0 {
+            color_eyre::eyre::bail!("No workers available");
         }
 
-        Some(values.remove(0))
-    }
+        let mut next = self.next.write().await;
+        *next += 1;
+        if *next >= max {
+            *next = 0;
+        }
 
-    pub async fn has_values(&self) -> bool {
-        let values = self.values.read().await;
-        !values.is_empty()
+        let senders = self.senders.read().await;
+        senders[*next].send(value).map_err(|_| {
+            color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
+        })?;
+
+        Ok(())
     }
 }
 
@@ -105,31 +121,22 @@ impl<T> Queue<T> {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 100;
+    let workers_count = 10000;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(tokio::spawn(v8_worker(i)));
     }
 
-    for i in 0..100000 {
+    for i in 0..10000000 {
         JOB_QUEUE
             .enqueue(V8Request {
-                ip: "192.168.1.1".to_string(),
-                port: 42069 + i as u16,
+                ip: format!("{}", i),
+                port: 42069,
             })
             .await;
     }
-    
-    loop {
-        let count = JOB_QUEUE.values.read().await.len();
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-        if count == 0 {
-            return Ok(());
-        }
-    }
-
-    //futures::future::join_all(workers).await;
+    futures::future::join_all(workers).await;
 
     /*
     let ext = Extension::builder("my_ext")
@@ -188,12 +195,12 @@ async fn main() -> Result<()> {
 }
 
 async fn v8_worker(worker_id: u128) -> Result<()> {
-    loop {
-        if JOB_QUEUE.has_values().await {
-            if let Some(job) = JOB_QUEUE.dequeue().await {
-                //println!("Job ({}): {:?}", worker_id, job);
-                tokio::time::sleep(Duration::from_micros(500)).await;
-            }
-        }
+    let mut rx = JOB_QUEUE.add_worker().await;
+
+    while let Some(job) = rx.recv().await {
+        //println!("Job ({}): {:?}", worker_id, job);
+        tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
     }
+
+    Ok(())
 }

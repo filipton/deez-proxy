@@ -10,5 +10,6 @@ color-eyre = "0.6.2"
 deno_core = "0.196.0"
 futures = "0.3.28"
 lazy_static = "1.4.0"
+rand = "0.8.5"
 serde = { version = "1.0.179", features = ["derive"] }
 tokio = { version = "1.29.1", features = ["full"] }
