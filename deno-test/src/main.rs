@@ -1,6 +1,7 @@
 use color_eyre::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 use deno_core::op;
@@ -13,8 +14,7 @@ use lazy_static::lazy_static;
 mod console;
 
 lazy_static! {
-    pub static ref JOB_QUEUE: Queue = Queue::new();
-
+    pub static ref JOB_QUEUE: Queue<V8Request> = Queue::new();
     pub static ref CALLBACKS: Arc<RwLock<HashMap<u128, tokio::sync::mpsc::Sender<V8Response>>>> =
         Arc::new(RwLock::new(HashMap::new()));
 }
@@ -71,22 +71,22 @@ pub struct V8Request {
     pub port: u16,
 }
 
-pub struct Queue {
-    values: Arc<RwLock<Vec<V8Request>>>,
+pub struct Queue<T> {
+    values: Arc<RwLock<Vec<T>>>,
 }
 
-impl Queue {
+impl<T> Queue<T> {
     pub fn new() -> Self {
         Self {
             values: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    pub async fn enqueue(&self, value: V8Request) {
+    pub async fn enqueue(&self, value: T) {
         self.values.write().await.push(value);
     }
 
-    pub async fn dequeue(&self) -> Option<V8Request> {
+    pub async fn dequeue(&self) -> Option<T> {
         let mut values = self.values.write().await;
         if values.is_empty() {
             return None;
@@ -105,28 +105,31 @@ impl Queue {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 10;
+    let workers_count = 100;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(tokio::spawn(v8_worker(i)));
     }
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    for i in 0..100000 {
+        JOB_QUEUE
+            .enqueue(V8Request {
+                ip: "192.168.1.1".to_string(),
+                port: 42069 + i as u16,
+            })
+            .await;
+    }
+    
+    loop {
+        let count = JOB_QUEUE.values.read().await.len();
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    JOB_QUEUE.enqueue(V8Request {
-        ip: "192.168.1.1".to_string(),
-        port: 42069,
-    }).await;
-    JOB_QUEUE.enqueue(V8Request {
-        ip: "192.168.1.2".to_string(),
-        port: 42069,
-    }).await;
-    JOB_QUEUE.enqueue(V8Request {
-        ip: "192.168.1.3".to_string(),
-        port: 42069,
-    }).await;
+        if count == 0 {
+            return Ok(());
+        }
+    }
 
-    futures::future::join_all(workers).await;
+    //futures::future::join_all(workers).await;
 
     /*
     let ext = Extension::builder("my_ext")
@@ -188,7 +191,8 @@ async fn v8_worker(worker_id: u128) -> Result<()> {
     loop {
         if JOB_QUEUE.has_values().await {
             if let Some(job) = JOB_QUEUE.dequeue().await {
-                println!("Job ({}): {:?}", worker_id, job);
+                //println!("Job ({}): {:?}", worker_id, job);
+                tokio::time::sleep(Duration::from_micros(500)).await;
             }
         }
     }
