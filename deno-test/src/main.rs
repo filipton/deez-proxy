@@ -7,11 +7,20 @@ use deno_core::RuntimeOptions;
 mod console;
 
 #[op]
-async fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
+fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
+    println!("Rust: op_sum {:?}", nums);
     // Sum inputs
     let sum = nums.iter().fold(0.0, |a, v| a + v);
     // return as a Result<f64, AnyError>
     Ok(sum)
+}
+
+#[op]
+async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
+    println!("Sleeping for {}ms", duration);
+    tokio::time::sleep(tokio::time::Duration::from_millis(duration)).await;
+
+    Ok(())
 }
 
 #[tokio::main]
@@ -28,7 +37,10 @@ async fn main() {
             "main.js",
             r#"
             async function test() {
+                let val = Deno.core.ops.op_sum([1,2,3]);
+                Deno.core.print(val.to_string() + "\n");
                 Deno.core.print("DBG: LOL\n");
+                //await Deno.core.ops.op_sleep(1000);
                 Deno.core.print("DBG: LOL2\n");
                 return {
                     test: 69
@@ -39,18 +51,19 @@ async fn main() {
         )
         .unwrap();
 
-    while let Err(e) = runtime.run_event_loop(true).await {
+    while let Err(e) = runtime.run_event_loop(false).await {
         println!("Error: {}", e);
     }
 
     let scope = &mut runtime.handle_scope();
+    let context = deno_core::v8::Context::new(scope);
+    let global = context.global(scope);
     let local = deno_core::v8::Local::new(scope, res);
     let function = deno_core::v8::Local::<deno_core::v8::Function>::try_from(local).unwrap();
     //let deserialized: deno_core::serde_json::Value = deno_core::serde_v8::from_v8(scope, local).unwrap();
 
     //println!("Result: {:?}", deserialized);
-    let test = deno_core::v8::undefined(scope).into();
-    let result = function.call(scope, test, &[]).unwrap();
+    let result = function.call(scope, global.into(), &[]).unwrap();
 
     let promise = deno_core::v8::Local::<deno_core::v8::Promise>::try_from(result).unwrap();
 
@@ -73,7 +86,10 @@ async fn main() {
         let result_res: Result<deno_core::serde_json::Value, deno_core::serde_v8::Error> =
             deno_core::serde_v8::from_v8(scope, result.into());
 
-        println!("Result: {:?}", deno_core::serde_json::to_string(&result_res.unwrap()).unwrap());
+        println!(
+            "Result: {:?}",
+            deno_core::serde_json::to_string(&result_res.unwrap()).unwrap()
+        );
     }
 
     println!("Script took {}", start.elapsed().as_micros());
