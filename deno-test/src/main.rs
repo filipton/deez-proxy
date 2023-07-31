@@ -1,10 +1,19 @@
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
+use lazy_static::lazy_static;
 
 mod console;
+
+lazy_static! {
+    pub static ref CALLBACKS: Arc<RwLock<Option<tokio::sync::mpsc::Sender<V8Response>>>> =
+        Arc::new(RwLock::new(None));
+}
 
 #[op]
 fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
@@ -26,6 +35,7 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 #[op]
 async fn op_callback(response: V8Response) -> Result<(), deno_core::error::AnyError> {
     println!("Rust: op_callback {:?}", response);
+    CALLBACKS.write().await.as_mut().unwrap().send(response).await.unwrap();
 
     Ok(())
 }
@@ -65,6 +75,8 @@ async fn main() {
         port: 42069,
     };
 
+    let mut channel = tokio::sync::mpsc::channel::<V8Response>(1);
+    *CALLBACKS.write().await = Some(channel.0);
     let req = deno_core::serde_json::to_string(&req).unwrap();
     let script = format!(
         r#"
@@ -93,6 +105,9 @@ async fn main() {
     while let Err(e) = runtime.run_event_loop(false).await {
         println!("Error: {}", e);
     }
+
+    let response = channel.1.recv().await.unwrap();
+    println!("Response: {:?}", response);
 
     println!("Script took {}", start.elapsed().as_micros());
 }
