@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 deno_core = "0.196.0"
+serde = { version = "1.0.179", features = ["derive"] }
 tokio = { version = "1.29.1", features = ["full"] }
