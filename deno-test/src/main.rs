@@ -16,9 +16,7 @@ use lazy_static::lazy_static;
 mod console;
 
 lazy_static! {
-    pub static ref JOB_QUEUE: Queue<V8Request> = Queue::new();
-    pub static ref CALLBACKS: Arc<RwLock<HashMap<u128, tokio::sync::mpsc::Sender<V8Response>>>> =
-        Arc::new(RwLock::new(HashMap::new()));
+    pub static ref JOB_QUEUE: Queue<V8Request, V8Response> = Queue::new();
 }
 
 #[op]
@@ -73,46 +71,74 @@ pub struct V8Request {
     pub port: u16,
 }
 
-pub struct Queue<T> {
-    senders: Arc<RwLock<Vec<tokio::sync::mpsc::UnboundedSender<T>>>>,
-    max: AtomicUsize,
-    next: Arc<RwLock<usize>>,
+#[derive(serde::Serialize, Debug)]
+pub struct WorkerRequest<T> {
+    job_id: u64,
+    value: T,
 }
 
-impl<T> Queue<T> {
+pub struct Queue<S, R> {
+    senders: Arc<RwLock<Vec<tokio::sync::mpsc::UnboundedSender<WorkerRequest<S>>>>>,
+    returners: Arc<RwLock<HashMap<u64, tokio::sync::mpsc::Sender<R>>>>,
+
+    max: AtomicUsize,
+    next: AtomicUsize,
+}
+
+impl<S, R> Queue<S, R> {
     pub fn new() -> Self {
         Self {
             senders: Arc::new(RwLock::new(Vec::new())),
+            returners: Arc::new(RwLock::new(HashMap::new())),
+
             max: AtomicUsize::new(0),
-            next: Arc::new(RwLock::new(0)),
+            next: AtomicUsize::new(0),
         }
     }
 
-    pub async fn add_worker(&self) -> tokio::sync::mpsc::UnboundedReceiver<T> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<T>();
+    pub async fn add_worker(&self) -> tokio::sync::mpsc::UnboundedReceiver<WorkerRequest<S>> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<WorkerRequest<S>>();
         self.senders.write().await.push(tx);
         self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         rx
     }
 
-    pub async fn enqueue(&self, value: T) -> Result<()> {
+    pub async fn enqueue(&self, value: S) -> Result<tokio::sync::mpsc::Receiver<R>> {
         let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
         if max == 0 {
             color_eyre::eyre::bail!("No workers available");
         }
 
-        let mut next = self.next.write().await;
-        *next += 1;
-        if *next >= max {
-            *next = 0;
+        let (tx, rx) = tokio::sync::mpsc::channel::<R>(1);
+        let returner_id = rand::thread_rng().gen::<u64>();
+        let w_req = WorkerRequest {
+            job_id: returner_id,
+            value,
+        };
+
+        {
+            self.returners.write().await.insert(returner_id, tx);
         }
 
+        let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
         let senders = self.senders.read().await;
-        senders[*next].send(value).map_err(|_| {
+        senders[next].send(w_req).map_err(|_| {
             color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
         })?;
 
+        Ok(rx)
+    }
+
+    pub async fn send_response(&self, job_id: u64, value: R) -> Result<()> {
+        let mut returners = self.returners.write().await;
+        let tx = returners.remove(&job_id).ok_or_else(|| {
+            color_eyre::eyre::eyre!("Failed to find returner for job_id {:?}", job_id)
+        })?;
+
+        tx.send(value).await.map_err(|_| {
+            color_eyre::eyre::eyre!("Failed to send value to returner {:?}", job_id)
+        })?;
         Ok(())
     }
 }
@@ -121,20 +147,21 @@ impl<T> Queue<T> {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 10000;
+    let workers_count = 100;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(tokio::spawn(v8_worker(i)));
     }
 
-    for i in 0..10000000 {
-        JOB_QUEUE
-            .enqueue(V8Request {
-                ip: format!("{}", i),
-                port: 42069,
-            })
-            .await;
-    }
+    let mut res = JOB_QUEUE
+        .enqueue(V8Request {
+            ip: format!("192.168.1.1"),
+            port: 42069,
+        })
+        .await?;
+
+    let res = res.recv().await.unwrap();
+    println!("Got response: {:?}", res);
 
     futures::future::join_all(workers).await;
 
@@ -194,11 +221,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn v8_worker(worker_id: u128) -> Result<()> {
+async fn v8_worker(worker_id: u64) -> Result<()> {
     let mut rx = JOB_QUEUE.add_worker().await;
 
     while let Some(job) = rx.recv().await {
-        //println!("Job ({}): {:?}", worker_id, job);
+        println!("Job ({}): {:?}", worker_id, job);
+        JOB_QUEUE
+            .send_response(
+                job.job_id,
+                V8Response {
+                    ip: Some(job.value.ip),
+                    cpu_time: Some(123),
+                    block_connection: None,
+                    hang_connection: None,
+                    no_delay: None,
+                },
+            )
+            .await?;
+
+        // LOAD SIMULATION
         tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
     }
 
