@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+color-eyre = "0.6.2"
 deno_core = "0.196.0"
+futures = "0.3.28"
 lazy_static = "1.4.0"
 serde = { version = "1.0.179", features = ["derive"] }
 tokio = { version = "1.29.1", features = ["full"] }

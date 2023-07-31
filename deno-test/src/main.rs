@@ -1,3 +1,5 @@
+use color_eyre::Result;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -11,8 +13,10 @@ use lazy_static::lazy_static;
 mod console;
 
 lazy_static! {
-    pub static ref CALLBACKS: Arc<RwLock<Option<tokio::sync::mpsc::Sender<V8Response>>>> =
-        Arc::new(RwLock::new(None));
+    pub static ref JOB_QUEUE: Queue = Queue::new();
+
+    pub static ref CALLBACKS: Arc<RwLock<HashMap<u128, tokio::sync::mpsc::Sender<V8Response>>>> =
+        Arc::new(RwLock::new(HashMap::new()));
 }
 
 #[op]
@@ -35,7 +39,16 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 #[op]
 async fn op_callback(response: V8Response) -> Result<(), deno_core::error::AnyError> {
     println!("Rust: op_callback {:?}", response);
-    CALLBACKS.write().await.as_mut().unwrap().send(response).await.unwrap();
+    /*
+    CALLBACKS
+        .write()
+        .await
+        .as_mut()
+        .unwrap()
+        .send(response)
+        .await
+        .unwrap();
+        */
 
     Ok(())
 }
@@ -58,8 +71,64 @@ pub struct V8Request {
     pub port: u16,
 }
 
+pub struct Queue {
+    values: Arc<RwLock<Vec<V8Request>>>,
+}
+
+impl Queue {
+    pub fn new() -> Self {
+        Self {
+            values: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+
+    pub async fn enqueue(&self, value: V8Request) {
+        self.values.write().await.push(value);
+    }
+
+    pub async fn dequeue(&self) -> Option<V8Request> {
+        let mut values = self.values.write().await;
+        if values.is_empty() {
+            return None;
+        }
+
+        Some(values.remove(0))
+    }
+
+    pub async fn has_values(&self) -> bool {
+        let values = self.values.read().await;
+        !values.is_empty()
+    }
+}
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+    color_eyre::install()?;
+
+    let workers_count = 10;
+    let mut workers = vec![];
+    for i in 0..workers_count {
+        workers.push(tokio::spawn(v8_worker(i)));
+    }
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+    JOB_QUEUE.enqueue(V8Request {
+        ip: "192.168.1.1".to_string(),
+        port: 42069,
+    }).await;
+    JOB_QUEUE.enqueue(V8Request {
+        ip: "192.168.1.2".to_string(),
+        port: 42069,
+    }).await;
+    JOB_QUEUE.enqueue(V8Request {
+        ip: "192.168.1.3".to_string(),
+        port: 42069,
+    }).await;
+
+    futures::future::join_all(workers).await;
+
+    /*
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
         .build();
@@ -75,8 +144,8 @@ async fn main() {
         port: 42069,
     };
 
-    let mut channel = tokio::sync::mpsc::channel::<V8Response>(1);
-    *CALLBACKS.write().await = Some(channel.0);
+    //let mut channel = tokio::sync::mpsc::channel::<V8Response>(1);
+    // *CALLBACKS.write().await = Some(channel.0);
     let req = deno_core::serde_json::to_string(&req).unwrap();
     let script = format!(
         r#"
@@ -106,8 +175,21 @@ async fn main() {
         println!("Error: {}", e);
     }
 
-    let response = channel.1.recv().await.unwrap();
-    println!("Response: {:?}", response);
+    //let response = channel.1.recv().await.unwrap();
+    //println!("Response: {:?}", response);
 
     println!("Script took {}", start.elapsed().as_micros());
+    */
+
+    Ok(())
+}
+
+async fn v8_worker(worker_id: u128) -> Result<()> {
+    loop {
+        if JOB_QUEUE.has_values().await {
+            if let Some(job) = JOB_QUEUE.dequeue().await {
+                println!("Job ({}): {:?}", worker_id, job);
+            }
+        }
+    }
 }
