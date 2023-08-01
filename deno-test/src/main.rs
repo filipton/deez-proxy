@@ -1,20 +1,17 @@
 use color_eyre::Result;
-use deno_core::JsRuntimeForSnapshot;
-use rand::Rng;
-use std::collections::HashMap;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
-
 use deno_core::op;
 use deno_core::Extension;
-use deno_core::JsRuntime;
+use deno_core::JsRuntimeForSnapshot;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
 use lazy_static::lazy_static;
 
+use crate::structs::Queue;
+use crate::structs::V8Request;
+use crate::structs::V8Response;
+
 mod console;
+mod structs;
 
 lazy_static! {
     pub static ref JOB_QUEUE: Queue<V8Request, V8Response> = Queue::new();
@@ -49,113 +46,25 @@ async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core:
     Ok(())
 }
 
-#[derive(serde::Deserialize, Debug)]
-#[allow(dead_code)]
-pub struct V8Response {
-    pub block_connection: Option<bool>,
-    pub hang_connection: Option<bool>,
-    pub ip: Option<String>,
-    pub no_delay: Option<bool>,
-
-    pub cpu_time: Option<u64>,
-}
-
-#[derive(serde::Serialize, Debug)]
-#[allow(dead_code)]
-pub struct V8Request {
-    pub ip: String,
-    pub port: u16,
-}
-
-#[derive(serde::Serialize, Debug)]
-pub struct WorkerRequest<T> {
-    job_id: u32,
-    value: T,
-}
-
-pub struct Queue<S, R> {
-    senders: Arc<std::sync::RwLock<Vec<tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
-    returners: Arc<RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
-
-    max: AtomicUsize,
-    next: AtomicUsize,
-}
-
-impl<S, R> Queue<S, R> {
-    pub fn new() -> Self {
-        Self {
-            senders: Arc::new(std::sync::RwLock::new(Vec::new())),
-            returners: Arc::new(RwLock::new(HashMap::new())),
-
-            max: AtomicUsize::new(0),
-            next: AtomicUsize::new(0),
-        }
-    }
-
-    pub fn add_worker(&self) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
-        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerRequest<S>>(100);
-        self.senders.write().unwrap().push(tx);
-        self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        rx
-    }
-
-    pub async fn enqueue(&self, value: S) -> Result<tokio::sync::mpsc::Receiver<R>> {
-        let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
-        if max == 0 {
-            color_eyre::eyre::bail!("No workers available");
-        }
-
-        let (tx, rx) = tokio::sync::mpsc::channel::<R>(1);
-        let returner_id = rand::thread_rng().gen::<u32>();
-        let w_req = WorkerRequest {
-            job_id: returner_id,
-            value,
-        };
-
-        {
-            self.returners.write().await.insert(returner_id, tx);
-        }
-
-        let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
-        let senders = self.senders.read().unwrap();
-        senders[next].send(w_req).await.map_err(|_| {
-            color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
-        })?;
-
-        Ok(rx)
-    }
-
-    pub async fn send_response(&self, job_id: u32, value: R) -> Result<()> {
-        let mut returners = self.returners.write().await;
-        let tx = returners.remove(&job_id).ok_or_else(|| {
-            color_eyre::eyre::eyre!("Failed to find returner for job_id {:?}", job_id)
-        })?;
-
-        tx.send(value).await.map_err(|_| {
-            color_eyre::eyre::eyre!("Failed to send value to returner {:?}", job_id)
-        })?;
-        Ok(())
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 100;
+    let workers_count = 1usize;
     let mut workers = vec![];
     for i in 0..workers_count {
-        workers.push(std::thread::spawn(move || {
+        workers.push(std::thread::spawn(move || loop {
             let res = v8_worker(i);
             if let Err(e) = res {
                 println!("Worker {} failed: {:?}", i, e);
             }
+
+            JOB_QUEUE.remove_worker(i);
         }));
     }
 
     loop {
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_micros(10)).await;
         let start = std::time::Instant::now();
         let mut res = JOB_QUEUE
             .enqueue(V8Request {
@@ -170,19 +79,13 @@ async fn main() -> Result<()> {
     }
 }
 
-fn v8_worker(worker_id: u64) -> Result<()> {
+fn v8_worker(worker_id: usize) -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     let _guard = rt.enter();
 
     let mut rx = JOB_QUEUE.add_worker();
-
-    /*
-    let tokio_runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-        */
 
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
@@ -206,7 +109,7 @@ fn v8_worker(worker_id: u64) -> Result<()> {
 
             let val = Deno.core.ops.op_sum([1,2,3]);
             Deno.core.print(val + "\n");
-            await Deno.core.ops.op_sleep(1000);
+            //await Deno.core.ops.op_sleep(1000);
             Deno.core.print("DBG: LOL\n");
 
             return {{
@@ -221,22 +124,10 @@ fn v8_worker(worker_id: u64) -> Result<()> {
         "#,
             req, job.job_id
         );
+
         runtime.execute_script("main.js", script.into()).unwrap();
-
         rt.block_on(runtime.run_event_loop(false)).unwrap();
-
-        /*
-        tokio_runtime
-            .block_on(runtime.run_event_loop(true))
-            .unwrap();
-            */
-
-        //_ = runtime.run_event_loop(true).await;
-
-        // LOAD SIMULATION
-        //tokio::time::sleep(tokio::time::Duration::from_millis(3)).await;
     }
 
-    println!("Worker {} finished", worker_id);
     Ok(())
 }
