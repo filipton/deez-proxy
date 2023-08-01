@@ -38,7 +38,7 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 
 #[op]
 async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core::error::AnyError> {
-    println!("Rust: {} op_callback {:?}", job_id, response);
+    //println!("Rust: {} op_callback {:?}", job_id, response);
     JOB_QUEUE
         .send_response(job_id, response)
         .await
@@ -51,21 +51,24 @@ async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core:
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 1usize;
+    let workers_count = 10usize;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(std::thread::spawn(move || {
-            let res = v8_worker(i);
-            if let Err(e) = res {
-                println!("Worker {} failed: {:?}", i, e);
-            }
-
-            // Remove worker from queue (its rare that this will be called)
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .unwrap();
-            rt.block_on(JOB_QUEUE.remove_worker(i));
+
+            loop {
+                let res = v8_worker(&rt, i);
+                if let Err(e) = res {
+                    println!("Worker {} failed: {:?}", i, e);
+                }
+
+                // Remove worker from queue (its rare that this will be called)
+                rt.block_on(JOB_QUEUE.remove_worker(i));
+            }
         }));
     }
 
@@ -81,12 +84,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn v8_worker(worker_id: usize) -> Result<()> {
-    println!("Starting worker {}", worker_id);
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
     let _guard = rt.enter();
     let mut rx = rt.block_on(JOB_QUEUE.add_worker(worker_id));
 
@@ -102,22 +100,21 @@ fn v8_worker(worker_id: usize) -> Result<()> {
     );
 
     while let Some(job) = rx.blocking_recv() {
-        println!("Job ({}): {:?}", worker_id, job);
+        //println!("Job ({}): {:?}", worker_id, job);
 
         let req = deno_core::serde_json::to_string(&job.value).unwrap();
         let script = format!(
             r#"
         async function test(req) {{
-            Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
+            //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
-            let val = Deno.core.ops.op_sum([1,2,3]);
-            Deno.core.print(val + "\n");
+            //let val = Deno.core.ops.op_sum([1,2,3]);
+            //Deno.core.print(val + "\n");
             //await Deno.core.ops.op_sleep(1000);
-            Deno.core.print("DBG: LOL\n");
+            //Deno.core.print("DBG: LOL\n");
 
             return {{
-                ip: req.ip,
-                cpu_time: 321,
+                ip: "localhost:80",
             }};
         }}
 
@@ -146,8 +143,10 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
         match socket_res {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
-                    if let Err(e) = handle_client(socket, port, addr).await {
-                        println!("Handle Client Error: {}", e);
+                    let mut job_id = 0;
+                    if let Err(_) = handle_client(socket, port, addr, &mut job_id).await {
+                        //println!("Handle Client Error ({}): {}", job_id, e);
+                        JOB_QUEUE.remove_job(job_id).await;
                     }
                 });
             }
@@ -158,14 +157,20 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
     }
 }
 
-async fn handle_client(mut socket: TcpStream, port: u16, addr: SocketAddr) -> Result<()> {
-    let mut res = JOB_QUEUE
+async fn handle_client(
+    mut socket: TcpStream,
+    port: u16,
+    addr: SocketAddr,
+    job_id: &mut u32,
+) -> Result<()> {
+    let (res_job_id, mut res) = JOB_QUEUE
         .enqueue(V8Request {
-            ip: format!("vps.filipton.space:80"),
-            port: 42069,
+            ip: addr.ip().to_string(),
+            port,
         })
         .await?;
 
+    *job_id = res_job_id;
     let res = res.recv().await.unwrap();
 
     if res.block_connection.unwrap_or(false) {
