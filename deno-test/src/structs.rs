@@ -30,7 +30,7 @@ pub struct WorkerRequest<T> {
 }
 
 pub struct Queue<S, R> {
-    senders: Arc<std::sync::RwLock<Vec<tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
+    senders: Arc<tokio::sync::RwLock<Vec<tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
     returners: Arc<tokio::sync::RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
 
     max: AtomicUsize,
@@ -40,7 +40,7 @@ pub struct Queue<S, R> {
 impl<S, R> Queue<S, R> {
     pub fn new() -> Self {
         Self {
-            senders: Arc::new(std::sync::RwLock::new(Vec::new())),
+            senders: Arc::new(tokio::sync::RwLock::new(Vec::new())),
             returners: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
 
             max: AtomicUsize::new(0),
@@ -48,17 +48,17 @@ impl<S, R> Queue<S, R> {
         }
     }
 
-    pub fn add_worker(&self) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
+    pub async fn add_worker(&self) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerRequest<S>>(100);
-        self.senders.write().unwrap().push(tx);
+        self.senders.write().await.push(tx);
         self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         rx
     }
 
-    pub fn remove_worker(&self, id: usize) {
+    pub async fn remove_worker(&self, id: usize) {
         self.max.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        self.senders.write().unwrap().remove(id);
+        self.senders.write().await.remove(id);
     }
 
     pub async fn enqueue(&self, value: S) -> Result<tokio::sync::mpsc::Receiver<R>> {
@@ -79,7 +79,7 @@ impl<S, R> Queue<S, R> {
         }
 
         let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
-        let senders = self.senders.read().unwrap();
+        let senders = self.senders.read().await;
         senders[next].send(w_req).await.map_err(|_| {
             color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
         })?;
