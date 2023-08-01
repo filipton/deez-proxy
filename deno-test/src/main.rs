@@ -38,11 +38,13 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 
 #[op]
 async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core::error::AnyError> {
-    //println!("Rust: {} op_callback {:?}", job_id, response);
+    println!("Rust: {} op_callback {:?}", job_id, response);
+    /*
     JOB_QUEUE
         .send_response(job_id, response)
         .await
         .expect("Failed to send response");
+        */
 
     Ok(())
 }
@@ -86,7 +88,7 @@ async fn main() -> Result<()> {
 
 fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
     let _guard = rt.enter();
-    let mut rx = rt.block_on(JOB_QUEUE.add_worker(worker_id));
+    //let mut rx = rt.block_on(JOB_QUEUE.add_worker(worker_id));
 
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
@@ -99,10 +101,11 @@ fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
         Default::default(),
     );
 
-    while let Some(job) = rx.blocking_recv() {
+    let rx = JOB_QUEUE.queue_rx.clone();
+    while let Ok(job) = rx.recv() {
         //println!("Job ({}): {:?}", worker_id, job);
 
-        let req = deno_core::serde_json::to_string(&job.value).unwrap();
+        let req = deno_core::serde_json::to_string(&job).unwrap();
         let script = format!(
             r#"
         async function test(req) {{
@@ -122,7 +125,7 @@ fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
             await Deno.core.ops.op_callback({}, res);
         }});
         "#,
-            req, job.job_id
+            req, worker_id
         );
 
         runtime.execute_script("main.js", script.into()).unwrap();
@@ -163,16 +166,25 @@ async fn handle_client(
     addr: SocketAddr,
     job_id: &mut u32,
 ) -> Result<()> {
-    let (res_job_id, mut res) = JOB_QUEUE
+    _ = JOB_QUEUE
         .enqueue(V8Request {
             ip: addr.ip().to_string(),
             port,
         })
-        .await?;
+        .await;
 
+    /*
     *job_id = res_job_id;
     let res = res.recv().await.unwrap();
+    */
 
+    let res = V8Response {
+        ip: Some("localhost:80".to_string()),
+        block_connection: None,
+        hang_connection: None,
+        no_delay: None,
+        cpu_time: None,
+    };
     if res.block_connection.unwrap_or(false) {
         return Ok(());
     } else if res.hang_connection.unwrap_or(false) {

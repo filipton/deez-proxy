@@ -30,8 +30,8 @@ pub struct WorkerRequest<T> {
 }
 
 pub struct Queue<S, R> {
-    queue_tx: crossbeam_channel::Sender<WorkerRequest<S>>,
-    queue_rx: crossbeam_channel::Receiver<WorkerRequest<S>>,
+    queue_tx: crossbeam_channel::Sender<S>,
+    pub queue_rx: crossbeam_channel::Receiver<S>,
     senders: Arc<tokio::sync::RwLock<HashMap<usize, tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
     returners: Arc<tokio::sync::RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
 
@@ -39,9 +39,12 @@ pub struct Queue<S, R> {
     next: AtomicUsize,
 }
 
-impl<S, R> Queue<S, R> {
+impl<S, R> Queue<S, R>
+where
+    S: Send + Sync + 'static,
+{
     pub fn new() -> Self {
-        let (queue_tx, queue_rx) = crossbeam_channel::unbounded::<WorkerRequest<S>>();
+        let (queue_tx, queue_rx) = crossbeam_channel::unbounded::<S>();
 
         Self {
             queue_tx,
@@ -72,6 +75,9 @@ impl<S, R> Queue<S, R> {
     }
 
     pub async fn enqueue(&self, value: S) -> Result<(u32, tokio::sync::mpsc::Receiver<R>)> {
+        self.queue_tx.send(value)?;
+
+        /*
         let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
         if max == 0 {
             color_eyre::eyre::bail!("No workers available");
@@ -96,6 +102,7 @@ impl<S, R> Queue<S, R> {
             })?;
             return Ok((returner_id, rx));
         }
+        */
 
         color_eyre::eyre::bail!("Failed to find worker {:?}", self.next)
     }
