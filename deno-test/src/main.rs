@@ -4,6 +4,7 @@ use crate::structs::V8Response;
 use color_eyre::Result;
 use deno_core::op;
 use deno_core::Extension;
+use deno_core::JsRuntime;
 use deno_core::JsRuntimeForSnapshot;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
@@ -38,13 +39,11 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
 
 #[op]
 async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core::error::AnyError> {
-    println!("Rust: {} op_callback {:?}", job_id, response);
-    /*
+    //println!("Rust: {} op_callback {:?}", job_id, response);
     JOB_QUEUE
         .send_response(job_id, response)
         .await
         .expect("Failed to send response");
-        */
 
     Ok(())
 }
@@ -53,7 +52,7 @@ async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core:
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 10usize;
+    let workers_count = 100usize;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(std::thread::spawn(move || {
@@ -67,9 +66,6 @@ async fn main() -> Result<()> {
                 if let Err(e) = res {
                     println!("Worker {} failed: {:?}", i, e);
                 }
-
-                // Remove worker from queue (its rare that this will be called)
-                rt.block_on(JOB_QUEUE.remove_worker(i));
             }
         }));
     }
@@ -88,51 +84,49 @@ async fn main() -> Result<()> {
 
 fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
     let _guard = rt.enter();
-    //let mut rx = rt.block_on(JOB_QUEUE.add_worker(worker_id));
+    let rx = JOB_QUEUE.get_rx();
 
-    let ext = Extension::builder("my_ext")
-        .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
-        .build();
-    let mut runtime = JsRuntimeForSnapshot::new(
-        RuntimeOptions {
+    loop {
+        let ext = Extension::builder("my_ext")
+            .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
+            .build();
+        let mut runtime = JsRuntime::new(RuntimeOptions {
             extensions: vec![ext],
             ..Default::default()
-        },
-        Default::default(),
-    );
+        });
 
-    let rx = JOB_QUEUE.queue_rx.clone();
-    while let Ok(job) = rx.recv() {
-        //println!("Job ({}): {:?}", worker_id, job);
+        for _ in 0..100 {
+            if let Ok(job) = rx.recv() {
+                //println!("Job ({}): {:?}", worker_id, job);
 
-        let req = deno_core::serde_json::to_string(&job).unwrap();
-        let script = format!(
-            r#"
-        async function test(req) {{
-            //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
+                let req = deno_core::serde_json::to_string(&job.value).unwrap();
+                let script = format!(
+                    r#"
+                async function test(req) {{
+                    //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
-            //let val = Deno.core.ops.op_sum([1,2,3]);
-            //Deno.core.print(val + "\n");
-            //await Deno.core.ops.op_sleep(1000);
-            //Deno.core.print("DBG: LOL\n");
+                    //let val = Deno.core.ops.op_sum([1,2,3]);
+                    //Deno.core.print(val + "\n");
+                    //await Deno.core.ops.op_sleep(1000);
+                    //Deno.core.print("DBG: LOL\n");
 
-            return {{
-                ip: "localhost:80",
-            }};
-        }}
+                    return {{
+                        ip: "localhost:80",
+                    }};
+                }}
 
-        test({}).then(async (res) => {{
-            await Deno.core.ops.op_callback({}, res);
-        }});
-        "#,
-            req, worker_id
-        );
+                test({}).then(async (res) => {{
+                    await Deno.core.ops.op_callback({}, res);
+                }});
+                "#,
+                    req, job.job_id
+                );
 
-        runtime.execute_script("main.js", script.into()).unwrap();
-        rt.block_on(runtime.run_event_loop(false)).unwrap();
+                runtime.execute_script("main.js", script.into()).unwrap();
+                rt.block_on(runtime.run_event_loop(false)).unwrap();
+            }
+        }
     }
-
-    Ok(())
 }
 
 async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
@@ -147,9 +141,9 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
                     let mut job_id = 0;
-                    if let Err(_) = handle_client(socket, port, addr, &mut job_id).await {
-                        //println!("Handle Client Error ({}): {}", job_id, e);
-                        JOB_QUEUE.remove_job(job_id).await;
+                    if let Err(e) = handle_client(socket, port, addr, &mut job_id).await {
+                        //println!("Handle Client Error: {}", e);
+                        _ = JOB_QUEUE.remove_job(job_id).await;
                     }
                 });
             }
@@ -166,25 +160,16 @@ async fn handle_client(
     addr: SocketAddr,
     job_id: &mut u32,
 ) -> Result<()> {
-    _ = JOB_QUEUE
+    let (res_job_id, mut rx) = JOB_QUEUE
         .enqueue(V8Request {
             ip: addr.ip().to_string(),
             port,
         })
-        .await;
+        .await?;
 
-    /*
     *job_id = res_job_id;
-    let res = res.recv().await.unwrap();
-    */
+    let res = rx.recv().await.unwrap();
 
-    let res = V8Response {
-        ip: Some("localhost:80".to_string()),
-        block_connection: None,
-        hang_connection: None,
-        no_delay: None,
-        cpu_time: None,
-    };
     if res.block_connection.unwrap_or(false) {
         return Ok(());
     } else if res.hang_connection.unwrap_or(false) {

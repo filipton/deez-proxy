@@ -1,9 +1,6 @@
+use std::{collections::HashMap, sync::Arc};
+
 use color_eyre::Result;
-use rand::Rng;
-use std::{
-    collections::HashMap,
-    sync::{atomic::AtomicUsize, Arc},
-};
 
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]
@@ -30,13 +27,10 @@ pub struct WorkerRequest<T> {
 }
 
 pub struct Queue<S, R> {
-    queue_tx: crossbeam_channel::Sender<S>,
-    pub queue_rx: crossbeam_channel::Receiver<S>,
-    senders: Arc<tokio::sync::RwLock<HashMap<usize, tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
-    returners: Arc<tokio::sync::RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
+    queue_tx: crossbeam_channel::Sender<WorkerRequest<S>>,
+    queue_rx: crossbeam_channel::Receiver<WorkerRequest<S>>,
 
-    max: AtomicUsize,
-    next: AtomicUsize,
+    pub returners: Arc<tokio::sync::RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
 }
 
 impl<S, R> Queue<S, R>
@@ -44,74 +38,34 @@ where
     S: Send + Sync + 'static,
 {
     pub fn new() -> Self {
-        let (queue_tx, queue_rx) = crossbeam_channel::unbounded::<S>();
+        let (queue_tx, queue_rx) = crossbeam_channel::unbounded::<WorkerRequest<S>>();
 
         Self {
             queue_tx,
             queue_rx,
-
-            senders: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             returners: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-
-            max: AtomicUsize::new(0),
-            next: AtomicUsize::new(0),
         }
-    }
-
-    pub async fn add_worker(
-        &self,
-        worker_id: usize,
-    ) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
-        let (tx, rx) = tokio::sync::mpsc::channel::<WorkerRequest<S>>(100);
-        self.senders.write().await.insert(worker_id, tx);
-        self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        rx
-    }
-
-    pub async fn remove_worker(&self, worker_id: usize) {
-        self.max.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        self.senders.write().await.remove(&worker_id);
     }
 
     pub async fn enqueue(&self, value: S) -> Result<(u32, tokio::sync::mpsc::Receiver<R>)> {
-        self.queue_tx.send(value)?;
+        let channel = tokio::sync::mpsc::channel(1);
 
-        /*
-        let max = self.max.load(std::sync::atomic::Ordering::SeqCst);
-        if max == 0 {
-            color_eyre::eyre::bail!("No workers available");
-        }
+        let job_id = rand::random::<u32>();
+        self.returners.write().await.insert(job_id, channel.0);
+        self.queue_tx.send(WorkerRequest { job_id, value })?;
 
-        let (tx, rx) = tokio::sync::mpsc::channel::<R>(1);
-        let returner_id = rand::thread_rng().gen::<u32>();
-        let w_req = WorkerRequest {
-            job_id: returner_id,
-            value,
-        };
-
-        {
-            self.returners.write().await.insert(returner_id, tx);
-        }
-
-        let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
-        let senders = self.senders.read().await;
-        if let Some(sender) = senders.get(&next) {
-            sender.send(w_req).await.map_err(|_| {
-                color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
-            })?;
-            return Ok((returner_id, rx));
-        }
-        */
-
-        color_eyre::eyre::bail!("Failed to find worker {:?}", self.next)
+        Ok((job_id, channel.1))
     }
 
     pub async fn send_response(&self, job_id: u32, value: R) -> Result<()> {
-        let mut returners = self.returners.write().await;
-        let tx = returners.remove(&job_id).ok_or_else(|| {
-            color_eyre::eyre::eyre!("Failed to find returner for job_id {:?}", job_id)
-        })?;
+        let tx = self
+            .returners
+            .write()
+            .await
+            .remove(&job_id)
+            .ok_or_else(|| {
+                color_eyre::eyre::eyre!("Failed to find returner for job_id {:?}", job_id)
+            })?;
 
         tx.send(value).await.map_err(|_| {
             color_eyre::eyre::eyre!("Failed to send value to returner {:?}", job_id)
@@ -119,7 +73,12 @@ where
         Ok(())
     }
 
-    pub async fn remove_job(&self, job_id: u32) {
+    pub async fn remove_job(&self, job_id: u32) -> Result<()> {
         self.returners.write().await.remove(&job_id);
+        Ok(())
+    }
+
+    pub fn get_rx(&self) -> crossbeam_channel::Receiver<WorkerRequest<S>> {
+        self.queue_rx.clone()
     }
 }
