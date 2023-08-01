@@ -1,5 +1,6 @@
-use std::net::SocketAddr;
-
+use crate::structs::Queue;
+use crate::structs::V8Request;
+use crate::structs::V8Response;
 use color_eyre::Result;
 use deno_core::op;
 use deno_core::Extension;
@@ -7,12 +8,9 @@ use deno_core::JsRuntimeForSnapshot;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
 use lazy_static::lazy_static;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-
-use crate::structs::Queue;
-use crate::structs::V8Request;
-use crate::structs::V8Response;
 
 mod console;
 mod structs;
@@ -25,9 +23,7 @@ lazy_static! {
 #[op]
 fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
     println!("Rust: op_sum {:?}", nums);
-    // Sum inputs
     let sum = nums.iter().fold(0.0, |a, v| a + v);
-    // return as a Result<f64, AnyError>
     Ok(sum)
 }
 
@@ -58,13 +54,18 @@ async fn main() -> Result<()> {
     let workers_count = 1usize;
     let mut workers = vec![];
     for i in 0..workers_count {
-        workers.push(std::thread::spawn(move || loop {
+        workers.push(std::thread::spawn(move || {
             let res = v8_worker(i);
             if let Err(e) = res {
                 println!("Worker {} failed: {:?}", i, e);
             }
 
-            //JOB_QUEUE.remove_worker(i).await;
+            // Remove worker from queue (its rare that this will be called)
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(JOB_QUEUE.remove_worker(i));
         }));
     }
 
@@ -77,23 +78,6 @@ async fn main() -> Result<()> {
     }
     futures::future::try_join_all(tasks).await?;
 
-    /*
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_micros(10)).await;
-        let start = std::time::Instant::now();
-        let mut res = JOB_QUEUE
-            .enqueue(V8Request {
-                ip: format!("192.168.1.1:80"),
-                port: 42069,
-            })
-            .await?;
-
-        let res = res.recv().await.unwrap();
-        println!("Got response: {:?}", res);
-        println!("Script took {}", start.elapsed().as_micros());
-    }
-    */
-
     Ok(())
 }
 
@@ -104,8 +88,7 @@ fn v8_worker(worker_id: usize) -> Result<()> {
         .enable_all()
         .build()?;
     let _guard = rt.enter();
-
-    let mut rx = rt.block_on(JOB_QUEUE.add_worker());
+    let mut rx = rt.block_on(JOB_QUEUE.add_worker(worker_id));
 
     let ext = Extension::builder("my_ext")
         .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
@@ -178,7 +161,7 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
 async fn handle_client(mut socket: TcpStream, port: u16, addr: SocketAddr) -> Result<()> {
     let mut res = JOB_QUEUE
         .enqueue(V8Request {
-            ip: format!("192.168.1.1:80"),
+            ip: format!("vps.filipton.space:80"),
             port: 42069,
         })
         .await?;

@@ -30,7 +30,7 @@ pub struct WorkerRequest<T> {
 }
 
 pub struct Queue<S, R> {
-    senders: Arc<tokio::sync::RwLock<Vec<tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
+    senders: Arc<tokio::sync::RwLock<HashMap<usize, tokio::sync::mpsc::Sender<WorkerRequest<S>>>>>,
     returners: Arc<tokio::sync::RwLock<HashMap<u32, tokio::sync::mpsc::Sender<R>>>>,
 
     max: AtomicUsize,
@@ -40,7 +40,7 @@ pub struct Queue<S, R> {
 impl<S, R> Queue<S, R> {
     pub fn new() -> Self {
         Self {
-            senders: Arc::new(tokio::sync::RwLock::new(Vec::new())),
+            senders: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             returners: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
 
             max: AtomicUsize::new(0),
@@ -48,17 +48,20 @@ impl<S, R> Queue<S, R> {
         }
     }
 
-    pub async fn add_worker(&self) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
+    pub async fn add_worker(
+        &self,
+        worker_id: usize,
+    ) -> tokio::sync::mpsc::Receiver<WorkerRequest<S>> {
         let (tx, rx) = tokio::sync::mpsc::channel::<WorkerRequest<S>>(100);
-        self.senders.write().await.push(tx);
+        self.senders.write().await.insert(worker_id, tx);
         self.max.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         rx
     }
 
-    pub async fn remove_worker(&self, id: usize) {
+    pub async fn remove_worker(&self, worker_id: usize) {
         self.max.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        self.senders.write().await.remove(id);
+        self.senders.write().await.remove(&worker_id);
     }
 
     pub async fn enqueue(&self, value: S) -> Result<tokio::sync::mpsc::Receiver<R>> {
@@ -80,11 +83,14 @@ impl<S, R> Queue<S, R> {
 
         let next = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) % max;
         let senders = self.senders.read().await;
-        senders[next].send(w_req).await.map_err(|_| {
-            color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
-        })?;
+        if let Some(sender) = senders.get(&next) {
+            sender.send(w_req).await.map_err(|_| {
+                color_eyre::eyre::eyre!("Failed to send value to worker {:?}", self.next)
+            })?;
+            return Ok(rx);
+        }
 
-        Ok(rx)
+        color_eyre::eyre::bail!("Failed to find worker {:?}", self.next)
     }
 
     pub async fn send_response(&self, job_id: u32, value: R) -> Result<()> {
