@@ -1,6 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
-
 use color_eyre::Result;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(serde::Deserialize, Debug)]
 #[allow(dead_code)]

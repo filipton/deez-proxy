@@ -5,7 +5,6 @@ use color_eyre::Result;
 use deno_core::op;
 use deno_core::Extension;
 use deno_core::JsRuntime;
-use deno_core::JsRuntimeForSnapshot;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
 use lazy_static::lazy_static;
@@ -82,26 +81,23 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
+fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
     let _guard = rt.enter();
     let rx = JOB_QUEUE.get_rx();
 
-    loop {
-        let ext = Extension::builder("my_ext")
-            .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
-            .build();
-        let mut runtime = JsRuntime::new(RuntimeOptions {
-            extensions: vec![ext],
-            ..Default::default()
-        });
+    let ext = Extension::builder("my_ext")
+        .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
+        .build();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+        extensions: vec![ext],
+        ..Default::default()
+    });
+    while let Ok(job) = rx.recv() {
+        //println!("Job ({}): {:?}", worker_id, job);
 
-        for _ in 0..100 {
-            if let Ok(job) = rx.recv() {
-                //println!("Job ({}): {:?}", worker_id, job);
-
-                let req = deno_core::serde_json::to_string(&job.value).unwrap();
-                let script = format!(
-                    r#"
+        let req = deno_core::serde_json::to_string(&job.value).unwrap();
+        let script = format!(
+            r#"
                 async function test(req) {{
                     //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
@@ -119,14 +115,14 @@ fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
                     await Deno.core.ops.op_callback({}, res);
                 }});
                 "#,
-                    req, job.job_id
-                );
+            req, job.job_id
+        );
 
-                runtime.execute_script("main.js", script.into()).unwrap();
-                rt.block_on(runtime.run_event_loop(false)).unwrap();
-            }
-        }
+        runtime.execute_script("main.js", script.into()).unwrap();
+        rt.block_on(runtime.run_event_loop(false)).unwrap();
     }
+
+    Ok(())
 }
 
 async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
@@ -141,7 +137,7 @@ async fn port_worker(bind_ip: &str, port: u16) -> Result<()> {
             Ok((socket, addr)) => {
                 tokio::spawn(async move {
                     let mut job_id = 0;
-                    if let Err(e) = handle_client(socket, port, addr, &mut job_id).await {
+                    if let Err(_e) = handle_client(socket, port, addr, &mut job_id).await {
                         //println!("Handle Client Error: {}", e);
                         _ = JOB_QUEUE.remove_job(job_id).await;
                     }
