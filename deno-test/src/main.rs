@@ -47,6 +47,12 @@ async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core:
     Ok(())
 }
 
+#[op]
+fn op_inspect(obj: deno_core::serde_json::Value) -> Result<String, deno_core::error::AnyError> {
+    let res = deno_core::serde_json::to_string(&obj).unwrap();
+    Ok(res)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
@@ -86,12 +92,18 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
     let rx = JOB_QUEUE.get_rx();
 
     let ext = Extension::builder("my_ext")
-        .ops(vec![op_sum::DECL, op_sleep::DECL, op_callback::DECL])
+        .ops(vec![
+            op_sum::DECL,
+            op_sleep::DECL,
+            op_callback::DECL,
+            op_inspect::DECL,
+        ])
         .build();
     let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext],
+        extensions: vec![ext, console::console::init_ops_and_esm()],
         ..Default::default()
     });
+
     while let Ok(job) = rx.recv() {
         //println!("Job ({}): {:?}", worker_id, job);
 
@@ -99,6 +111,10 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
         let script = format!(
             r#"
                 async function test(req) {{
+                    Deno.core.ops.op_test_console();
+                    //fgw();
+                    //let obj = Deno.core.ops.op_inspect(req);
+                    //Deno.core.print(`DBG: ${{obj}}\n`);
                     //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
 
                     //let val = Deno.core.ops.op_sum([1,2,3]);
