@@ -57,7 +57,7 @@ fn op_inspect(obj: deno_core::serde_json::Value) -> Result<String, deno_core::er
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 100usize;
+    let workers_count = 10usize;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(std::thread::spawn(move || {
@@ -112,7 +112,7 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
             r#"
                 async function test(req) {{
                     Deno.core.ops.op_test_console();
-                    //fgw();
+                    fgw();
                     //let obj = Deno.core.ops.op_inspect(req);
                     //Deno.core.print(`DBG: ${{obj}}\n`);
                     //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
