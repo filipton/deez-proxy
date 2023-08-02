@@ -4,7 +4,7 @@ mod console;
 deno_core::extension!(
     runtime,
     deps = [console],
-    esm = [ dir "js", "00_entry.js", "01_console.js"],
+    esm = [ dir "js", "00_entry.js"],
 );
 
 deno_core::extension!(

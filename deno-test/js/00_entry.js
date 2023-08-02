@@ -1,1 +1,4 @@
-import * as console from 'ext:runtime/01_console.js';
+import * as console from 'ext:console/01_console.js';
+
+delete globalThis.console;
+globalThis.console = console;

@@ -2,7 +2,7 @@ use deno_core::{error::AnyError, op};
 deno_core::extension!(
     console,
     ops = [op_test_console],
-    esm = ["js/01_console.js"]
+    esm = [ dir "js", "01_console.js"]
 );
 
 #[op]

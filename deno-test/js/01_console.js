@@ -1,9 +1,7 @@
-function fgw() {
-    Deno.core.print("Hello World\n");
+function log(param) {
+    Deno.core.print("log: " + param + "\n");
 }
-globalThis.fgw = fgw;
-Deno.core.print("Hello World2\n");
 
 export {
-    fgw
+    log
 }

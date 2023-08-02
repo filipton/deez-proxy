@@ -114,8 +114,9 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
         let script = format!(
             r#"
                 async function test(req) {{
+                    console.log("DSDSADSADSADAS");
                     Deno.core.ops.op_test_console();
-                    fgw();
+                    //fgw();
                     //let obj = Deno.core.ops.op_inspect(req);
                     //Deno.core.print(`DBG: ${{obj}}\n`);
                     //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
