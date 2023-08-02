@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 
-mod console;
+mod extensions;
 mod structs;
 mod utils;
 
@@ -99,8 +99,11 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
             op_inspect::DECL,
         ])
         .build();
+    let mut extensions = extensions::get_all_extensions();
+    extensions.push(ext);
+
     let mut runtime = JsRuntime::new(RuntimeOptions {
-        extensions: vec![ext, console::console::init_ops_and_esm()],
+        extensions,
         ..Default::default()
     });
 

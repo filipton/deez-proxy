@@ -3,3 +3,7 @@ function fgw() {
 }
 globalThis.fgw = fgw;
 Deno.core.print("Hello World2\n");
+
+export {
+    fgw
+}
