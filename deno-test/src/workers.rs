@@ -33,14 +33,14 @@ pub fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
                     console.log("DSDSADSADSADAS");
                     //await Deno.core.ops.op_test_console();
 
-                    let res = await fetch("https://1.1.1.1");
+                    let res = await fetch("http://vps.filipton.space");
                     console.warn("RES: " + await res.text());
 
                     return {{
                         ip: "localhost:80",
                     }};
                     }} catch (e) {{
-                        console.log("Error: " + e);
+                        console.error(e.stack);
                         return {{
                             block_connection: true,
                         }};

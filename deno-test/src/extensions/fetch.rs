@@ -1,5 +1,5 @@
-use std::{collections::HashMap, borrow::Cow};
-use deno_core::{error::AnyError, op2, v8::{V8, self}};
+use deno_core::{error::AnyError, op2};
+use std::collections::HashMap;
 
 deno_core::extension!(
     fetch,

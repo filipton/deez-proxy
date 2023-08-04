@@ -6,8 +6,6 @@ globalThis.console = console;
 
 globalThis.TextEncoder = others.TextEncoder;
 globalThis.TextDecoder = others.TextDecoder;
-globalThis.ReadableStream = others.ReadableStream;
-globalThis.ReadableStreamReader = others.ReadableStreamReader;
 
 globalThis.fetch = fetch.fetch;
 globalThis.Response = fetch.Response;

@@ -1,12 +1,6 @@
 class Response {
     constructor(resp) {
-        this.body = new ReadableStream();
-        if (resp?.body) {
-            for (let byte of resp.body) {
-                this.body.enqueue(byte);
-            }
-        }
-
+        this.body = resp?.body || new Uint8Array();
         this.headers = resp?.headers || new Headers();
         this.ok = resp?.ok || false;
         this.redirected = resp?.redirected || false;
@@ -31,15 +25,7 @@ class Response {
             value: true,
         });
 
-        let body = new Uint8Array();
-        let reader = this.body.getReader();
-        let result = await reader.read();
-        while (!result.done) {
-            body = new Uint8Array([...body, result.value]);
-            result = await reader.read();
-        }
-
-        return new TextDecoder().decode(body);
+        return new TextDecoder().decode(this.body);
     }
 
     async json() {
@@ -51,15 +37,7 @@ class Response {
             value: true,
         });
 
-        let body = new Uint8Array();
-        let reader = this.body.getReader();
-        let result = await reader.read();
-        while (!result.done) {
-            body = new Uint8Array([...body, result.value]);
-            result = await reader.read();
-        }
-
-        return JSON.parse(new TextDecoder().decode(body));
+        return JSON.parse(new TextDecoder().decode(this.body));
     }
 
     async arrayBuffer() {
@@ -71,24 +49,12 @@ class Response {
             value: true,
         });
 
-        let body = new Uint8Array();
-        let reader = this.body.getReader();
-        let result = await reader.read();
-        while (!result.done) {
-            body = new Uint8Array([...body, result.value]);
-            result = await reader.read();
-        }
-
-        return new ArrayBuffer(body);
+        return new ArrayBuffer(this.body);
     }
 
     clone() {
         let res = new Response();
-        res.body = new ReadableStream();
-        for (let byte of this.body.queue) {
-            res.body.enqueue(byte);
-        }
-
+        res.body = this.body;
         res.headers = this.headers;
         res.ok = this.ok;
         res.redirected = this.redirected;
@@ -145,16 +111,12 @@ class Headers {
 
 class Request {
     constructor(url, options) {
-        this.body = new ReadableStream();
+        this.body = new Uint8Array();
         if (options?.body) {
             if (typeof options.body == "string") {
-                for (let byte of new TextEncoder().encode(options.body)) {
-                    this.body.enqueue(byte);
-                }
+                this.body = new TextEncoder().encode(options.body);
             } else if (options.body instanceof ArrayBuffer) {
-                for (let byte of options.body) {
-                    this.body.enqueue(byte);
-                }
+                this.body = new Uint8Array(options.body);
             } else {
                 throw new Error("Invalid body type");
             }
@@ -236,19 +198,10 @@ class Request {
 async function fetch(url, options) {
     let req = new Request(url, options);
 
-    let body = new Uint8Array();
-    let reader = req.body.getReader();
-    let result = await reader.read();
-    while (!result.done) {
-        body = new Uint8Array([...body, result.value]);
-        result = await reader.read();
-    }
+    let resp = await Deno.core.ops.op_internal_fetch(req.headers.headers, req.method, req.url, req.body);
+    let json = new TextDecoder().decode(resp);
 
-    req.headers.headers["content-length"] = `${body.length}`;
-    let resp = await Deno.core.ops.op_internal_fetch(req.headers.headers, req.method, req.url, body);
-    let arrBuf = new Uint8Array(resp);
-
-    return new Response(JSON.parse(new TextDecoder().decode(arrBuf)));
+    return new Response(JSON.parse(json));
 }
 
 export { fetch, Response, Request, Headers };
