@@ -33,8 +33,8 @@ async fn op_callback(
 
 pub fn get_all_extensions() -> Vec<Extension> {
     vec![
-        console::console::init_ops_and_esm(),
         others::others::init_ops_and_esm(),
+        console::console::init_ops_and_esm(),
         fetch::fetch::init_ops_and_esm(),
         // MUST BE LAST
         runtime::init_ops_and_esm(),

@@ -12,8 +12,7 @@ lazy_static! {
     pub static ref JOB_QUEUE: Queue<V8Request, V8Response> = Queue::new();
 }
 
-pub fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
-    let _guard = rt.enter();
+pub async fn v8_worker(worker_id: usize) -> Result<()> {
     let rx = JOB_QUEUE.get_rx();
 
     let extensions = crate::extensions::get_all_extensions();
@@ -23,39 +22,45 @@ pub fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
     });
 
     while let Ok(job) = rx.recv() {
-        println!("Job ({}): {:?}", worker_id, job);
+        let req = deno_core::serde_json::to_string(&job.value)?;
+        let job_id = job.job_id;
 
-        let req = deno_core::serde_json::to_string(&job.value).unwrap();
         let script = format!(
             r#"
-                async function test(req) {{
+                async function handler(req) {{
                     try {{
-                    console.log("DSDSADSADSADAS");
-                    //await Deno.core.ops.op_test_console();
+                        //console.log("DSDSADSADSADAS");
+                        //await Deno.core.ops.op_test_console();
 
-                    let res = await fetch("http://vps.filipton.space");
-                    console.warn("RES: " + await res.text());
+                        //let res = await fetch("https://echo.filipton.space/r7709629271299675447");
+                        //console.warn(await res.text());
 
-                    return {{
-                        ip: "localhost:80",
-                    }};
+                        return {{
+                            ip: "localhost:80",
+                        }}
                     }} catch (e) {{
+                        console.error("| ERROR | Worker {worker_id} | Job {job_id} |");
                         console.error(e.stack);
                         return {{
                             block_connection: true,
-                        }};
+                        }}
                     }}
                 }}
 
-                test({}).then(async (res) => {{
-                    await Deno.core.ops.op_callback({}, res);
+                handler({req}).then(async (res) => {{
+                    await Deno.core.ops.op_callback({job_id}, res);
                 }});
                 "#,
-            req, job.job_id
         );
 
-        runtime.execute_script("main.js", script.into()).unwrap();
-        rt.block_on(runtime.run_event_loop(false)).unwrap();
+        runtime
+            .execute_script("main.js", script.into())
+            .map_err(|e| color_eyre::eyre::eyre!("Runtime Error (Execute Script): {}", e))?;
+
+        runtime
+            .run_event_loop(false)
+            .await
+            .map_err(|e| color_eyre::eyre::eyre!("Runtime Error (Run Event Loop): {}", e))?;
     }
 
     Ok(())

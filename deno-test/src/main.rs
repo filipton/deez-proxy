@@ -24,7 +24,8 @@ async fn main() -> Result<()> {
                 .unwrap();
 
             loop {
-                let res = v8_worker(&rt, i);
+                let _guard = rt.enter();
+                let res = rt.block_on(v8_worker(i));
                 if let Err(e) = res {
                     println!("Worker {} failed: {:?}", i, e);
                 }
