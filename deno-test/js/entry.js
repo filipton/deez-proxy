@@ -1,4 +1,15 @@
 import * as console from 'ext:console/console.js';
+import * as others from 'ext:others/others.js';
+import * as fetch from 'ext:fetch/fetch.js';
 
-delete globalThis.console;
 globalThis.console = console;
+
+globalThis.TextEncoder = others.TextEncoder;
+globalThis.TextDecoder = others.TextDecoder;
+globalThis.ReadableStream = others.ReadableStream;
+globalThis.ReadableStreamReader = others.ReadableStreamReader;
+
+globalThis.fetch = fetch.fetch;
+globalThis.Response = fetch.Response;
+globalThis.Request = fetch.Request;
+globalThis.Headers = fetch.Headers;

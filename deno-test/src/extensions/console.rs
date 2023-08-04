@@ -5,9 +5,14 @@ deno_core::extension!(
     esm = [ dir "js", "console.js"]
 );
 
-#[op2(fast)]
-pub fn op_test_console() -> Result<(), AnyError> {
+#[op2(async)]
+pub async fn op_test_console() -> Result<(), AnyError> {
     println!("Hello from Rust!");
+
+    tokio::task::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        println!("Hello from Rust2!");
+    });
 
     Ok(())
 }

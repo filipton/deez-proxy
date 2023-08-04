@@ -31,14 +31,10 @@ pub fn v8_worker(rt: &tokio::runtime::Runtime, worker_id: usize) -> Result<()> {
                 async function test(req) {{
                     try {{
                     console.log("DSDSADSADSADAS");
-                    Deno.core.ops.op_test_console();
+                    //await Deno.core.ops.op_test_console();
 
-                    //let res = await fetch("https://1.1.1.1");
-                    console.log("log");
-                    console.info("info");
-                    console.warn("warn", {{dsa: "dsvcx"}});
-                    console.debug("debug", 1234);
-                    console.error("error");
+                    let res = await fetch("https://1.1.1.1");
+                    console.warn("RES: " + await res.text());
 
                     return {{
                         ip: "localhost:80",

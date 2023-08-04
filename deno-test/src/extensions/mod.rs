@@ -1,11 +1,13 @@
+use crate::{structs::V8Response, JOB_QUEUE};
 use deno_core::{op2, Extension};
 
-use crate::{structs::V8Response, JOB_QUEUE};
 mod console;
+mod fetch;
+mod others;
 
 deno_core::extension!(
     runtime,
-    deps = [console],
+    deps = [console, others, fetch],
     ops = [op_callback],
     esm = [ dir "js", "entry.js"],
 );
@@ -32,6 +34,8 @@ async fn op_callback(
 pub fn get_all_extensions() -> Vec<Extension> {
     vec![
         console::console::init_ops_and_esm(),
+        others::others::init_ops_and_esm(),
+        fetch::fetch::init_ops_and_esm(),
         // MUST BE LAST
         runtime::init_ops_and_esm(),
         runtime_entry::init_ops_and_esm(),
