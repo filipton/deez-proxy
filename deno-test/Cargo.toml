@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 color-eyre = "0.6.2"
 crossbeam-channel = "0.5.8"
-deno_core = "0.196.0"
+deno_core = "0.199.0"
 futures = "0.3.28"
 lazy_static = "1.4.0"
 rand = "0.8.5"

@@ -2,12 +2,13 @@ use crate::structs::Queue;
 use crate::structs::V8Request;
 use crate::structs::V8Response;
 use color_eyre::Result;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::RuntimeOptions;
 use lazy_static::lazy_static;
+use std::borrow::Cow;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
@@ -20,15 +21,15 @@ lazy_static! {
     pub static ref JOB_QUEUE: Queue<V8Request, V8Response> = Queue::new();
 }
 
-#[op]
-fn op_sum(nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
+#[op2]
+fn op_sum(#[serde] nums: Vec<f64>) -> Result<f64, deno_core::error::AnyError> {
     println!("Rust: op_sum {:?}", nums);
     let sum = nums.iter().fold(0.0, |a, v| a + v);
     Ok(sum)
 }
 
-#[op]
-async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
+#[op2(async)]
+async fn op_sleep(#[bigint] duration: u64) -> Result<(), deno_core::error::AnyError> {
     println!("Sleeping for {}ms", duration);
     tokio::time::sleep(tokio::time::Duration::from_millis(duration)).await;
     println!("Done sleeping");
@@ -36,8 +37,8 @@ async fn op_sleep(duration: u64) -> Result<(), deno_core::error::AnyError> {
     Ok(())
 }
 
-#[op]
-async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core::error::AnyError> {
+#[op2(async)]
+async fn op_callback(job_id: u32, #[serde] response: V8Response) -> Result<(), deno_core::error::AnyError> {
     //println!("Rust: {} op_callback {:?}", job_id, response);
     JOB_QUEUE
         .send_response(job_id, response)
@@ -47,8 +48,9 @@ async fn op_callback(job_id: u32, response: V8Response) -> Result<(), deno_core:
     Ok(())
 }
 
-#[op]
-fn op_inspect(obj: deno_core::serde_json::Value) -> Result<String, deno_core::error::AnyError> {
+#[op2]
+#[string]
+fn op_inspect(#[serde] obj: deno_core::serde_json::Value) -> Result<String, deno_core::error::AnyError> {
     let res = deno_core::serde_json::to_string(&obj).unwrap();
     Ok(res)
 }
@@ -91,14 +93,16 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
     let _guard = rt.enter();
     let rx = JOB_QUEUE.get_rx();
 
-    let ext = Extension::builder("my_ext")
-        .ops(vec![
+    let ext = Extension {
+        ops: Cow::Borrowed(&[
             op_sum::DECL,
             op_sleep::DECL,
             op_callback::DECL,
             op_inspect::DECL,
-        ])
-        .build();
+        ]),
+        ..Default::default()
+    };
+
     let mut extensions = extensions::get_all_extensions();
     extensions.push(ext);
 
@@ -116,15 +120,10 @@ fn v8_worker(rt: &tokio::runtime::Runtime, _worker_id: usize) -> Result<()> {
                 async function test(req) {{
                     console.log("DSDSADSADSADAS");
                     Deno.core.ops.op_test_console();
-                    //fgw();
-                    //let obj = Deno.core.ops.op_inspect(req);
-                    //Deno.core.print(`DBG: ${{obj}}\n`);
-                    //Deno.core.print(`DBG: ${{req.ip}} ${{req.port}}\n`);
+                    Deno.core.ops.op_sum([1,2,3,4]);
 
-                    //let val = Deno.core.ops.op_sum([1,2,3]);
-                    //Deno.core.print(val + "\n");
-                    //await Deno.core.ops.op_sleep(1000);
-                    //Deno.core.print("DBG: LOL\n");
+                    //let res = await fetch("https://1.1.1.1");
+                    console.log("dsa");
 
                     return {{
                         ip: "localhost:80",
