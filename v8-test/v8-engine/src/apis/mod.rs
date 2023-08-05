@@ -37,7 +37,7 @@ fn __internal_sleep2(
     rv.set(promise.into());
     println!("sleep2 promise");
 
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let (tx, rx) = crossbeam_channel::bounded(1);
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -55,13 +55,7 @@ fn __internal_sleep2(
         rt.block_on(fut);
     });
 
-    loop {
-        if let Ok(_res) = rx.try_recv() {
-            let undefined = v8::undefined(scope);
-            resolver.resolve(scope, undefined.into()).unwrap();
-
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_micros(100));
-    }
+    let _ = rx.recv().unwrap();
+    let undefined = v8::undefined(scope);
+    resolver.resolve(scope, undefined.into()).unwrap();
 }
