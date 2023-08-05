@@ -29,13 +29,10 @@ fn __internal_sleep2(
     args: v8::FunctionCallbackArguments,
     mut rv: v8::ReturnValue,
 ) {
-    println!("sleep2");
-
     let delay = args.get(0).number_value(scope).unwrap_or(0.0);
     let resolver = v8::PromiseResolver::new(scope).unwrap();
     let promise = resolver.get_promise(scope);
     rv.set(promise.into());
-    println!("sleep2 promise");
 
     let (tx, rx) = crossbeam_channel::bounded(1);
     std::thread::spawn(move || {
@@ -46,9 +43,8 @@ fn __internal_sleep2(
         let _guard = rt.enter();
 
         let fut = async move {
-            println!("sleeping {}ms", delay);
             tokio::time::sleep(std::time::Duration::from_millis(delay as u64)).await;
-            println!("sleeping {}ms done", delay);
+
             tx.send(()).unwrap();
         };
 

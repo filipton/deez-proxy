@@ -14,7 +14,7 @@ mod workers;
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let workers_count = 10usize;
+    let workers_count = 100usize;
     let mut workers = vec![];
     for i in 0..workers_count {
         workers.push(std::thread::spawn(move || {

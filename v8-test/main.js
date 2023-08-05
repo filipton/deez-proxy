@@ -1,6 +1,6 @@
 async function handle(req) {
     try {
-        await sleep(5000);
+        //await sleep(1);
         if (req.port == 7071) {
             return {
                 hang_connection: true,
@@ -8,7 +8,7 @@ async function handle(req) {
             }
         } else if (req.port == 7070) {
             return {
-                ip: "vps.filipton.space:80",
+                ip: "localhost:80",
                 no_delay: true, // if you want to proxy more advanced protocols, you need to enable nodelay
             }
         }
