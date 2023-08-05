@@ -1,5 +1,6 @@
 async function handle(req) {
     try {
+        await sleep(5000);
         if (req.port == 7071) {
             return {
                 hang_connection: true,
@@ -12,7 +13,6 @@ async function handle(req) {
             }
         }
 
-        // sleep(5000);
         return {
             ip: "vps.filipton.space:25565",
             no_delay: true,

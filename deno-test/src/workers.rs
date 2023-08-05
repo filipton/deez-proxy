@@ -36,7 +36,8 @@ pub async fn v8_worker(worker_id: usize) -> Result<()> {
                         //console.warn(await res.text());
 
                         return {{
-                            ip: "localhost:80",
+                            ip: "vps.filipton.space:25565",
+                            no_delay: true,
                         }}
                     }} catch (e) {{
                         console.error("| ERROR | Worker {worker_id} | Job {job_id} |");
