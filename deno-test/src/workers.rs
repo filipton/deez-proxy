@@ -1,7 +1,8 @@
 use color_eyre::Result;
 use deno_core::{JsRuntime, RuntimeOptions};
 use lazy_static::lazy_static;
-use tokio::net::TcpListener;
+use std::sync::Arc;
+use tokio::{net::TcpListener, sync::RwLock};
 
 use crate::{
     handle_client,
@@ -10,6 +11,32 @@ use crate::{
 
 lazy_static! {
     pub static ref JOB_QUEUE: Queue<V8Request, V8Response> = Queue::new();
+    pub static ref WORKER_SCRIPT: Arc<RwLock<String>> = {
+        let script = std::fs::read_to_string("main.js").unwrap();
+        Arc::new(RwLock::new(script))
+    };
+}
+
+pub fn worker_script_updater() -> Result<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+        loop {
+            interval.tick().await;
+
+            let script = tokio::fs::read_to_string("main.js").await;
+            if let Ok(script) = script {
+                if script != *WORKER_SCRIPT.read().await {
+                    println!("WORKER SCRIPT UPDATED");
+
+                    let mut worker_script = WORKER_SCRIPT.write().await;
+                    *worker_script = script;
+                }
+            }
+        }
+    });
+
+    Ok(())
 }
 
 pub async fn v8_worker(worker_id: usize) -> Result<()> {
@@ -25,20 +52,14 @@ pub async fn v8_worker(worker_id: usize) -> Result<()> {
         let req = deno_core::serde_json::to_string(&job.value)?;
         let job_id = job.job_id;
 
+        let worker_script = WORKER_SCRIPT.read().await;
         let script = format!(
             r#"
+                {worker_script}
+
                 async function handler(req) {{
                     try {{
-                        //console.log("DSDSADSADSADAS");
-                        //await Deno.core.ops.op_test_console();
-
-                        //let res = await fetch("https://echo.filipton.space/r7709629271299675447");
-                        //console.warn(await res.text());
-
-                        return {{
-                            ip: "localhost:80",
-                            no_delay: true,
-                        }}
+                        return await run(req);
                     }} catch (e) {{
                         console.error("| ERROR | Worker {worker_id} | Job {job_id} |");
                         console.error(e.stack);

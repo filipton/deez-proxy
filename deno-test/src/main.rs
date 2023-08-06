@@ -13,6 +13,7 @@ mod workers;
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
+    workers::worker_script_updater()?;
 
     let workers_count = 100usize;
     let mut workers = vec![];
