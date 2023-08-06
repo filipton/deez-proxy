@@ -17,7 +17,7 @@ export const options = {
 
 // Simulated user behavior
 export default function() {
-    let res = http.get("http://127.0.0.1:80");
+    let res = http.get("http://127.0.0.1:7070");
     // Validate response status
     check(res, { "status was 200": (r) => r.status == 200 });
     sleep(0.1);

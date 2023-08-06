@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_client(mut socket: TcpStream) -> Result<()> {
-    let mut out_stream = TcpStream::connect("192.168.1.1:80").await?;
+    let mut out_stream = TcpStream::connect("127.0.0.1:80").await?;
 
     tokio::io::copy_bidirectional(&mut socket, &mut out_stream).await?;
 
